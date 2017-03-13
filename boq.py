@@ -1,16 +1,21 @@
 import traceback, sys
 from struct import *
 import getopt, pprint, datetime
-from scapy.all import sniff
 from collections import namedtuple
 import amfy
-# import dsp.py
+from scapy.all import sniff
+import math
 
 packets = {}
 
 handled = {}
+ignored = {}
 
 players = {}
+
+def log(tag, *args, **kwargs):
+  with open('errlog', 'a'):
+    print(tag, ':', *args, kwargs)
 
 def handler(*tags):
   global handled
@@ -22,15 +27,52 @@ def handler(*tags):
     return newf
   return wrap
 
-@handler('02_08', '1C_04', '08_07', '08_0B')
+def ignore(*tags):
+  global ignored
+  for tag in tags:
+    ignored[tag] = None
+
+ignore('18_0A',
+       '1C_04',
+       '02_05', '02_08', '02_0B',
+       '08_06', '08_07', '08_0B', '08_0C',
+       '34_0C',
+       '3E_06',
+)
+
+def num_reduce(n):
+  v = math.log(n,10)
+  if v >= 9:
+    p = 'G'
+    v = 7
+  elif v >= 6:
+    p = 'M'
+    v = 4
+  elif v >= 3:
+    p = 'K'
+    v = 1
+  else:
+    return n
+
+  rv = n // (10 ** v)
+  return '{} {}'.format(rv / 100, p)
+
+@handler('02_08')
 def decode(d):
-  pass
+  return {'xp': {'current_xp': num_reduce(d['zhujue_exp'])}}
+
+# Mine stuff
+@handler('41_11')
+def decode(d):
+  return {'mine_refresh': d['next_refresh']}
+
 
 @handler('1B_03', '08_08')
 def decode(d):
   if 'name' in d and 'player_id' in d:
     players[d['name']] = d['player_id']
     players[d['player_id']] = d['name']
+  return {'associate': [d['player_id'], d['name']]}
 
 @handler('19_09')
 def decode(d):
@@ -48,6 +90,10 @@ def decode(d):
       #print(x)
       print('  ', str(datetime.timedelta(seconds=x['cd'])), x['left_times'], x['plant_level'], x['seed_level'], x['lev'])
 
+@handler('35_04')
+def decode(d):
+  return {'merchant_refresh': d}
+
 @handler('03_07', '04_07')
 def decode(d):
   where = list(d.keys())[0]
@@ -58,17 +104,33 @@ def decode(d):
     for i in items:
       print('{num} {id} {price}'.format(i))
 
+@handler('49_08')
+def decode(d):
+  n = None
+  try:
+    n = d['next_refresh']
+  except:
+    pass
+  return {'set_orcs': n}
 
-def handle_command(b):
+def handle_command(t, b):
   if hasattr(b,'load'):
-    (ln,c1,c2) = unpack(">I2B", b.load[0:6])
-    print("Sending {:02x}_{:02X} ({})".format(c1,c2,ln))
+    load = b.load
+    if len(load) > 5:
+      try:
+        (ln,c1,c2) = unpack(">I2B", load[0:6])
+        r = amfy.loads(load[10:])
+        # print("Sending {:02x}_{:02X} {}".format(c1,c2,r))
+      except:
+        log('short load outbound', sys.exc_info(), load)
   # else:
   #   print("Sending ACK")
 
-def handle_info(b):
-  (ln,c1,c2) = unpack(">I2B", b[0:6])
-  # print("Received bytes {}/{} ({})".format(len(packets[b]), ln, packets[b]))
+def handle_info(t, b):
+  try:
+    (ln,c1,c2) = unpack(">I2B", b[0:6])
+  except:
+    print("Received bytes {} ({})".format(len(b), b))
   cmd = '{:02X}_{:02X}'.format(c1,c2)
   try:
     r = amfy.loads(b[10:])
@@ -76,52 +138,99 @@ def handle_info(b):
     print('amfy fail ({}) on {}'.format(sys.exc_info(), b[10:]))
     with open('amfy_fail', 'a') as o:
       print('amfy fail ({}) on {}'.format(sys.exc_info(), b[10:]), file=o)
+    return
+
+  if cmd not in ignored:
+    print(cmd, '-->', r)
 
   if cmd in handled:
+    res = handled[cmd](r)
+    if res:
+      res.update({'who': t})
+      print('res is', res)
+    return res
 
-      handled[cmd](r)
+def pkt_split(tag):
+  res = list()
+  org = bt = packets[tag]
+  packets[tag] = b''
+  while True:
+    (ln,) = unpack('>I', bt[0:4])
+    if ln+10 == len(bt):
+      res.append(bt)
+      return res
+    elif ln+10 > len(bt):
+      print('Shorted multi', 'len', ln, 'instead of', len(bt))
+      with open('pkt/short', 'a') as o:
+        print(org, file=o)
+        print('len', ln, len(bt), 'in', bt, file=o)
+        print('----------\n', file=o)
+        return res
+    res.append(bt[0:ln+10])
+    bt = bt[ln+10:]
 
-  else:
-    print(cmd, '-->', r)
-      
-
-def handle_pck(p, outf=None):
+def assemble(tag, p):
   global packets
 
-  tag = p['IP'].src + '/' + str(p['TCP'].dport)
   if tag not in packets:
-    packets[tag] = b''
+    packets[tag] = p.load
+  else:
+    packets[tag] += p.load
+    
+  if p['TCP'].flags & 0x08:
+    return pkt_split(tag)
+  return ()
 
-  # print("Packet type 0x{:x}".format(p['TCP'].flags), "from", tag, "cur", len(packets[tag]))
+def handle_pck(p, outf=None):
+
+  tag = p['IP'].src + '/' + str(p['TCP'].dport)
 
   if hasattr(p, 'load'):
     print(tag, ':', p.load, file=outf)
 
   if tag.startswith('192.168'):
-    handle_command(p)
+    handle_command(tag, p)
+  elif 'Padding' in p:
+    return None
   else:
-    cur = len(packets[tag])
-    packets[tag] += p.load
-    (ln,) = unpack(">I", packets[tag][0:4])
-    ln += 10
-    # print('-- {}: len {} - {} - {}, flag {:x}'.format(tag, ln, len(p.load), len(packets[tag]), p['TCP'].flags))
-    if ln == len(packets[tag]):
-      handle_info(packets[tag])
-      packets[tag] = b''
-    elif ln < len(packets[tag]):
-      print("oops, went over {} ({}) resetting".format(ln, len(packets[tag])))
-      with open('pkt/over', 'a') as o:
-        print('base', packets[tag], 'ln', ln, 'flags {:x}'.format(p['TCP'].flags), file=o)
-      packets[tag] = b''
-    elif p['TCP'].flags & 0x08:
-      print("oops, strange {} ({}) resetting".format(ln, len(packets[tag])))
-      with open('pkt/strg', 'a') as o:
-        print('base', packets[tag], 'ln', ln, 'flags {:x}'.format(p['TCP'].flags), file=o)
-      packets[tag] = b''
-    else:
-      print("  Added {} to {} (goal is {})".format(len(p.load), cur, ln))
+    p_list = assemble(tag, p)
+    ret = {}
+    for pkt in p_list:
+      cur = len(pkt)
+      (ln,) = unpack(">I", pkt[0:4])
+      ln += 10
+      if ln == len(pkt):
+        res = handle_info(tag, pkt)
+        if res:
+          ret.update(res)
+      else:
+        print("Expected ({0} {1}) got ({2} {2:x})".format(ln, pkt[0:4], len(pkt)))
+        with open('pkt/strg', 'a') as o:
+          print('base', pkt, 'ln', ln, file=o)
+    if ret:
+      ret.update({'who': tag})
+      print('send', res)
+    return ret
     
+def sniffer(q, filter, outf):
+  if outf:
+    if outf == '-':
+        sniff(filter=filter,
+              prn=lambda p:q.put(handle_pck(p, outf=sys.stdout)))
+    else:
+        with open(outf, 'a') as outf:
+            sniff(filter=filter,
+                  prn=lambda p:q.put(handle_pck(p, outf=outf)))
+
+  else:
+      with open(os.devnull, 'w') as outf:
+          sniff(filter=filter,
+                prn=lambda p:q.put(handle_pck(p, outf=outf)))
+
+
+
 if __name__ == '__main__':
+  from scapy.all import sniff
   f = []
   out=None
   clear = False
