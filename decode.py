@@ -1,9 +1,30 @@
+import math
 from datetime import timedelta
 
 handled = {}
 ignored = {}
 
 players = {}
+
+equip_level = ('bronze', 'iron', 'silver', 'gold', 'aurian',
+               'rubian', 'mithrillan', 'argentian', 'ferrian')
+               
+def num_reduce(n):
+  v = math.log(n,10)
+  if v >= 9:
+    p = 'G'
+    v = 7
+  elif v >= 6:
+    p = 'M'
+    v = 4
+  elif v >= 3:
+    p = 'K'
+    v = 1
+  else:
+    return n
+
+  rv = n // (10 ** v)
+  return '{} {}'.format(rv / 100, p)
 
 def handler(*tags):
   global handled
@@ -20,13 +41,13 @@ def ignore(*tags):
   for tag in tags:
     ignored[tag] = None
 
-ignore('18_0A',
-       '1C_04',
-       '02_05', '02_08', '02_0B',
-       '08_06', '08_07', '08_0B', '08_0C',
-       '34_0C',
-       '3E_06',
-)
+# ignore('18_0A',
+#        '1C_04',
+#        '02_05', '02_08', '02_0B',
+#        '08_06', '08_07', '08_0B', '08_0C',
+#        '34_0C',
+#        '3E_06',
+# )
 
 def num_reduce(n):
   v = math.log(n,10)
@@ -100,3 +121,13 @@ def decode(d):
   except:
     pass
   return {'set_orcs': n}
+
+
+@handler('25_0F')
+def decode(d):
+    res = {'next_refresh': d['next_refresh_left_time'],
+           'done': d['award_times'], 'possible': list()}
+    for quest in d['pending']:
+        if quest['quality'] > 1 and not quest['finished']:
+            res['possible'].append(quest)
+    return {'dailies': res}

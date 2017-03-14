@@ -32,7 +32,18 @@ class CountDown(tk.Frame):
         self.columnconfigure(1,weight=1)
         register(self.tick)
     def tick(self):
-        self.value.config(text=self.elapsed())
+        v = self.elapsed()
+        bkg = 'white'
+        if not self.up:
+            try:
+                if v < 60:
+                    bkg = 'red'
+                elif self.next and v < self.next*0.1:
+                    bkg = 'orange'
+            except:
+                pass
+        v = str(timedelta(seconds=v)) if v != '???' else v
+        self.value.config(text=v, bg=bkg)
     def elapsed(self):
         if self.when is None:
             return '???'
@@ -44,43 +55,54 @@ class CountDown(tk.Frame):
                 val = 0
 
             val = self.when - val
-        return str(timedelta(seconds=int(val)))
+        return int(val)
     def set_cd(self, new_val):
         self.start = time.time()
         self.when = new_val
 
 class CInfo(tk.Frame):
-    def __init__(self, master, name='', fmt=None, fields=()):
-        super().__init__(master)
+    def __init__(self, master, name='', fmt=None, fields={}):
+        super().__init__(master, relief=tk.RAISED, border=1, bg='grey')
         self.name = name
         self.fmt = fmt
         self.what = tk.Label(self, text=self.name)
         self.what.grid(row=0, column=0, sticky=tk.W)
         self.values = dict()
+        self.format = dict()
         self.columnconfigure(0,weight=1)
         col = 1
         for f in fields:
-            setattr(self, f, '')
-            self.values[f] = tk.Label(text='', fg=f)
-            self.values[f].grid(row=0, column=col, sticky=tk.E+tk.W)
+            if isinstance(f,tuple):
+                (fname, fmt) = f
+            else:
+                (fname, fmt) = (f, '{%s}' % f)
+            setattr(self, fname, '')
+            self.format[fname] = fmt
+            self.values[fname] = tk.Label(self, text='', fg=fname, bg='grey')
+            self.values[fname].grid(row=0, column=col, sticky=tk.E+tk.W)
             self.columnconfigure(col,weight=1)
             col+=1
         self.refresh()
     def set(self, **kwargs):
-        self.__dict__.update(kwargs)
+        for k,v in kwargs.items():
+            setattr(self,k,v)
         self.refresh()
     def refresh(self, **kwargs):
         v = vars(self)
         v.update(kwargs)
-        try:
-            tx = self.fmt.format(**v)
-        except:
-            tx = sys.exc_info()[1]
-        self.value.config(text=tx)
+        print('CI({})'.format(v))
+        for f in self.values:
+            try:
+                tx = self.format[f].format(**v)
+                print('setting {} to {}'.format(v[f], f))
+            except:
+                print('setting {}: {}'.format(f, sys.exc_info()[1]))
+                tx = sys.exc_info()[1]
+            self.values[f].config(text=tx)
             
 class Info(tk.Frame):
     def __init__(self, master, name='', fmt=None, centered=False, **kwargs):
-        super().__init__(master)
+        super().__init__(master, relief=tk.RAISED, border=1)
         self.name = name
         self.fmt = fmt
         self.what = tk.Label(self, text=self.name)
@@ -110,13 +132,18 @@ class Info(tk.Frame):
 class Hud(tk.Frame):
     def __init__(self, master, tag, who='Unknown'):
         super().__init__(master)
-        self.title = Info(self, name=tag, centered=True, fmt='{name}')
+        self.title = Info(self, name='', tag=tag, centered=True, fmt='{tag}')
         self.exo = CountDown(self, name='Exotic Merchant', when=None, next=3600)
         self.dailies = CountDown(self, name='Dailies', when=None, next=1800)
+        self.d_content = CInfo(self, name='',
+                               fields=(('black', '{black}/10'),
+                                       'blue', 'purple', 'yellow'))
         self.exp = Info(self, name='Exp', fmt='{current_xp}/{next_level}',
                         current_xp='?', next_level='??')
+        self.title.grid(sticky=tk.E+tk.W)
         self.exo.grid(sticky=tk.E+tk.W)
         self.dailies.grid(sticky=tk.E+tk.W)
+        self.d_content.grid(sticky=tk.E+tk.W)
         self.exp.grid(sticky=tk.E+tk.W)
         self.columnconfigure(0,weight=1)
 
@@ -165,7 +192,7 @@ class Gui():
             except:
                 xx = None
             if xx:
-                print('Read', xx)
+                # print('Read', xx)
                 who = xx.pop('who')
                 if who not in self.huds:
                     h = Hud(self.main_frame, tag=who)
@@ -173,7 +200,7 @@ class Gui():
                     h.grid(row=0, column=len(self.huds))
                 else:
                     h = self.huds[who]
-                print('got', xx, 'from', who)
+                # print('got', xx, 'from', who)
                 for k in xx:
                     print('Proc', k)
                     if hasattr(self, k):
@@ -192,7 +219,16 @@ class Gui():
 
     def merchant_refresh(self, d, hud):
         hud.exo.set_cd(d['left_time'])
-        
+
+    def dailies(self, d, hud):
+        hud.dailies.set_cd(d['next_refresh']);
+        p = {3: 0, 4: 0, 5: 0}
+        for i in d['possible']:
+            if i['quality'] in p:
+                p[i['quality']] += 1
+            else:
+                p[i['quality']] = 1
+        hud.d_content.set(black=d['done'], blue=p[3], purple=p[4], yellow=p[5])
 
     def associate(self, d, hud):
         pass

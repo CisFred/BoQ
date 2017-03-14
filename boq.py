@@ -1,6 +1,6 @@
-import traceback, sys, os, pprint
+import traceback, sys, os
 from struct import *
-import getopt
+import getopt, pprint, datetime
 from collections import namedtuple
 import amfy
 from scapy.all import sniff
@@ -9,9 +9,12 @@ from decode import handled, ignored
 
 packets = {}
 
+players = {}
+
 def log(tag, *args, **kwargs):
   with open('errlog', 'a'):
-    print(tag, ':', args, kwargs)
+    print(tag, ':', *args, kwargs)
+
 
 def handle_command(t, b):
   if hasattr(b,'load'):
@@ -20,9 +23,6 @@ def handle_command(t, b):
       try:
         (ln,c1,c2) = unpack(">I2B", load[0:6])
         r = amfy.loads(load[10:])
-        os.makedirs('amf/{:02X}'.format(c1))
-        with open('amf/{:02X}/{:02X}'.format(c1,c2), 'a') as o:
-          pprint.pprint(r, stream=o)
         # print("Sending {:02x}_{:02X} {}".format(c1,c2,r))
       except:
         log('short load outbound', sys.exc_info(), load)
@@ -46,11 +46,26 @@ def handle_info(t, b):
   if cmd not in ignored:
     print(cmd, '-->', r)
 
+  try:
+    os.makedirs('amf/{:02X}'.format(c1))
+  except OSError:
+    pass
+  except:
+    print(sys.exc_info())
+    pass
+
+  try:
+    with open('amf/{:02X}/{:02X}'.format(c1,c2), 'a') as o:
+      pprint.pprint(r, stream=o)
+  except:
+    pass
+    
+
   if cmd in handled:
     res = handled[cmd](r)
     if res:
       res.update({'who': t})
-      print('res is', res)
+      # print('res is', res)
     return res
 
 def pkt_split(tag):
@@ -91,11 +106,10 @@ def handle_pck(p, outf=None):
   if hasattr(p, 'load'):
     print(tag, ':', p.load, file=outf)
 
-  if 'Padding' in p:
-    return None
-
   if tag.startswith('192.168'):
     handle_command(tag, p)
+  elif 'Padding' in p:
+    return None
   else:
     p_list = assemble(tag, p)
     ret = {}
@@ -113,7 +127,7 @@ def handle_pck(p, outf=None):
           print('base', pkt, 'ln', ln, file=o)
     if ret:
       ret.update({'who': tag})
-      print('send', res)
+      # print('send', res)
     return ret
     
 def sniffer(q, filter, outf):
