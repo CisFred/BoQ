@@ -48,6 +48,35 @@ class CountDown(tk.Frame):
     def set_cd(self, new_val):
         self.start = time.time()
         self.when = new_val
+
+class CInfo(tk.Frame):
+    def __init__(self, master, name='', fmt=None, fields=()):
+        super().__init__(master)
+        self.name = name
+        self.fmt = fmt
+        self.what = tk.Label(self, text=self.name)
+        self.what.grid(row=0, column=0, sticky=tk.W)
+        self.values = dict()
+        self.columnconfigure(0,weight=1)
+        col = 1
+        for f in fields:
+            setattr(self, f, '')
+            self.values[f] = tk.Label(text='', fg=f)
+            self.values[f].grid(row=0, column=col, sticky=tk.E+tk.W)
+            self.columnconfigure(col,weight=1)
+            col+=1
+        self.refresh()
+    def set(self, **kwargs):
+        self.__dict__.update(kwargs)
+        self.refresh()
+    def refresh(self, **kwargs):
+        v = vars(self)
+        v.update(kwargs)
+        try:
+            tx = self.fmt.format(**v)
+        except:
+            tx = sys.exc_info()[1]
+        self.value.config(text=tx)
             
 class Info(tk.Frame):
     def __init__(self, master, name='', fmt=None, centered=False, **kwargs):
@@ -65,6 +94,9 @@ class Info(tk.Frame):
             self.value.grid(row=0, column=1, sticky=tk.E+tk.W)
         self.columnconfigure(0,weight=1)
         self.columnconfigure(1,weight=1)
+        self.refresh()
+    def set(self, **kwargs):
+        self.__dict__.update(kwargs)
         self.refresh()
     def refresh(self, **kwargs):
         v = vars(self)
