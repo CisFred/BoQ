@@ -41,6 +41,8 @@ def ignore(*tags):
   for tag in tags:
     ignored[tag] = None
 
+ignore('08_0B')
+
 # ignore('18_0A',
 #        '1C_04',
 #        '02_05', '02_08', '02_0B',
@@ -70,10 +72,21 @@ def num_reduce(n):
 def decode(d):
   return {'xp': {'current_xp': num_reduce(d['zhujue_exp'])}}
 
+
+# Player stuff
+@handler('08_04')
+def decode(d):
+  if 'name' in d and 'player_id' in d:
+    players[d['name']] = d['player_id']
+    players[d['player_id']] = d['name']
+  return {'I_am': [d['player_id'], d['name']]}
+  
+
 # Mine stuff
 @handler('41_11')
 def decode(d):
   return {'mine_refresh': d['next_refresh']}
+
 
 
 @handler('1B_03', '08_08')
@@ -85,19 +98,7 @@ def decode(d):
 
 @handler('19_09')
 def decode(d):
-  list_manor = list()
-  if 'friends' in d:
-    for k in d['friends']:
-      # print(k, ':', len(k))
-      handled['1B_03'](k)
-      list_manor.append(k)
-    lm = sorted(list_manor, key=lambda f: f['level'], reverse=True)
-    for i in range(0,10):
-      print(lm[i]['name'], lm[i]['can_steal'])
-  else:
-    for x in d['lands']:
-      #print(x)
-      print('  ', str(timedelta(seconds=x['cd'])), x['left_times'], x['plant_level'], x['seed_level'], x['lev'])
+  return {'manor': d}
 
 @handler('35_04')
 def decode(d):

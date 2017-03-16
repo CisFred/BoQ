@@ -44,7 +44,11 @@ def handle_info(t, b):
     return
 
   if cmd not in ignored:
-    print(cmd, '-->', r)
+    try:
+      print(cmd, '-->', r)
+    except:
+      # print('burp on {:02x}_{:02x}'.format(c1,c2), sys.exc_info()[1])
+      pass
 
   try:
     os.makedirs('amf/{:02X}'.format(c1))
@@ -125,9 +129,7 @@ def handle_pck(p, outf=None):
         print("Expected ({0} {1}) got ({2} {2:x})".format(ln, pkt[0:4], len(pkt)))
         with open('pkt/strg', 'a') as o:
           print('base', pkt, 'ln', ln, file=o)
-    if ret:
-      ret.update({'who': tag})
-      # print('send', res)
+    ret.update({'who': tag})
     return ret
     
 def sniffer(q, filter, outf):
