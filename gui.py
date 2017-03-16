@@ -7,6 +7,7 @@ import traceback
 from boq import sniffer
 
 todo = []
+players = dict()
 
 class MineW(tk.Frame):
     def __init__(self, master):
@@ -30,19 +31,28 @@ class ManorCount(tk.Frame):
         self.black = 0
         max_cd = 0
         min_cd = 99999999999
+        print(what, 'data is', data)
         for x in data:
-            self.black += 1
-            if x['left_times']:
-                self.orange += 1
-                if x['cd']:
-                    if x['cd'] < min_cd:
-                        min_cd = x['cd']
-                    if x['cd'] > max_cd:
-                        max_cd = x['cd']
-                else:
-                    self.green += 1
+            print('x is', x)
+            if x['plant_level']:
+                self.black += 1
+                if x['left_times']:
+                    self.orange += 1
+                    if x['cd']:
+                        if x['cd'] < min_cd:
+                            min_cd = x['cd']
+                        if x['cd'] > max_cd:
+                            max_cd = x['cd']
+                    else:
+                        self.green += 1
 
-        self.what = CInfo(self, name='F', fields=('black', 'green', 'orange'))
+        if not self.black:
+            min_cd = 0
+
+        print('{}: {}/{}/{}, {} -> {}'.format(what, self.black, self.green,
+                                              self.orange, min_cd, max_cd))
+        self.what = CInfo(self, name=what[0:2],
+                          fields=('black', 'green', 'orange'))
         self.cd1 = CountDown(self, when=min_cd)
         self.cd2 = CountDown(self, when=max_cd)
 
@@ -73,8 +83,10 @@ class Manor(tk.Toplevel):
         self.title = ManorLine(self, 'My Self', manors['My Self'])
         self.title.grid(row=0, column=0, sticky=tk.E+tk.W)
         self.columnconfigure(0,weight=1)
-
-        
+    def set(self, data):
+        pass
+    def refresh(self):
+        pass
     
 
 class CountDown(tk.Frame):
@@ -151,16 +163,6 @@ class CountDown(tk.Frame):
     def set_cd(self, new_val):
         self.start = time.time()
         self.when = new_val
-
-class Detach(tk.Toplevel):
-    def __init__(self, master, name='', **kwargs):
-        super().__init__(master)
-        self.name = name
-        self.what = tk.Label(self, text=self.name)
-        self.inside = tk.Frame(self, relief=tk.RAISED, border=1)
-        self.q = tk.Button(self, text='Close', command=self.destroy)
-        self.__dict__.update(kwargs)
-
 
 class CInfo(tk.Frame):
     def __init__(self, master, name=None, fmt=None, fields={}, **kwargs):
@@ -314,11 +316,12 @@ class Gui():
                     print('Proc', k, 'for', who)
                     if hasattr(self, k):
                         getattr(self, k)(xx[k], h)
+        
         for k,h in self.huds.items():
             if time.time() - h.last_upd > 60:
                 print('nuke idle', k)
                 h.destroy()
-                del self.huds[k]
+                self.huds[k] = None
 
 
 
@@ -357,18 +360,18 @@ class Gui():
         hud.tick()
 
     def manor(self, d, hud):
+        manor = dict()
         if 'self' in d:
-            self.I_am({'player_name':  d['lands'][0]['planter_name']})
+            self.I_am({'player_name':  d['lands'][0]['planter_name']}, hud)
 
             for k in d['friends']:
                 if 'name' in k and 'player_id' in k:
-                    players[d['name']] = k['player_id']
-                    players[d['player_id']] = k['name']
+                    players[k['name']] = k['player_id']
+                    players[k['player_id']] = k['name']
             
-        p_list = [(x['cd'], x['left_times'], x['plant_level'],
-                   x['seed_level'], x['lev']) for x in d['lands']]
-        f_list = [(x['cd'], x['left_times'], x['plant_level'],
-                   x['seed_level'], x['lev']) for x in d['flowers']]
+        fields = ('cd', 'left_times', 'plant_level', 'seed_level', 'lev')
+        p_list = [{k: x[k] for k in fields} for x in d['lands']]
+        f_list = [{k: x[k] for k in fields} for x in d['flowers']]
 
         if 'self' in d:
             manor['My Self'] = (0, p_list, f_list)
@@ -376,11 +379,11 @@ class Gui():
             manor[players[d['player_id']]] = (d['level'], p_list, f_list)
 
 
-        if not hasattr(self, 'manor'):
-            self.manor=Manor(self, 'Manor', manors=manor)
+        if not hasattr(self, 'Manor'):
+            self.Manor=Manor(self.master, manors=manor)
         else:
-            self.manor.set(manors=manor)
-        self.manor.refresh()
+            self.Manor.set(manors=manor)
+        self.Manor.refresh()
 
         
     def I_am(self, d, hud=None):

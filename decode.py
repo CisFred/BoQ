@@ -41,7 +41,7 @@ def ignore(*tags):
   for tag in tags:
     ignored[tag] = None
 
-ignore('08_0B')
+ignore('08_0B', '08_0C')
 
 # ignore('18_0A',
 #        '1C_04',
