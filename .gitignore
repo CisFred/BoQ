@@ -1,3 +1,6 @@
 amf/
 __pycache__/
 *.py~
+pkt/
+amfy_fail
+*~
