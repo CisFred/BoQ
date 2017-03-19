@@ -87,7 +87,8 @@ def pkt_split(tag):
         print(org, file=o)
         print('len', ln, len(bt), 'in', bt, file=o)
         print('----------\n', file=o)
-        return res
+      packets[tag] = b''
+      return res
     res.append(bt[0:ln+10])
     bt = bt[ln+10:]
 

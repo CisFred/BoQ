@@ -41,7 +41,7 @@ def ignore(*tags):
   for tag in tags:
     ignored[tag] = None
 
-ignore('08_0B', '08_0C')
+ignore('08_0B', '08_0C', '19_09', '1C_04', '02_08')
 
 # ignore('18_0A',
 #        '1C_04',
@@ -79,7 +79,7 @@ def decode(d):
   if 'name' in d and 'player_id' in d:
     players[d['name']] = d['player_id']
     players[d['player_id']] = d['name']
-  return {'I_am': [d['player_id'], d['name']]}
+  return {'I_am': {'player_id': d['player_id'], 'player_name': d['name']}}
   
 
 # Mine stuff

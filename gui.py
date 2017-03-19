@@ -2,12 +2,38 @@ import os, sys, time, queue
 import tkinter as tk
 from datetime import timedelta, datetime
 from multiprocessing import Process, Queue
-import getopt
-import traceback
+import getopt, traceback
 from boq import sniffer
+import sqlite3
 
 todo = []
 players = dict()
+manors = dict()
+
+levels = {
+    87: 31.33e6,
+    88: 331638660,
+    89: 351134060,
+    99: 241e6,
+    101: 261e6,
+    102: 262e6,
+}
+
+class Player():
+    def __init__(self,**kwargs):
+        self.__dict__.update(kwargs)
+    def update(self, **kwargs):
+        save = False
+        for k, v in kwargs.items():
+            if getattr(self, k, False) != v:
+                save = True
+                setattr(self, k, v)
+        if save:
+            self.save()
+    def save(self):
+        pass
+
+
 
 class MineW(tk.Frame):
     def __init__(self, master):
@@ -22,71 +48,100 @@ class MineW(tk.Frame):
         self.columnconfigure(2,weight=1)
     def set_cd(self, *args, **kwargs):
         self.cd.set_cd(*args, **kwargs)
+    def refresh(self):
+        self.nodes.refresh()
+        self.cd.refresh()
 
-class ManorCount(tk.Frame):
-    def __init__(self, master, what, data):
+class ManorGroup(tk.Frame):
+    def __init__(self, master, what, data, col, row):
         super().__init__(master, relief=tk.RAISED, border=1)
-        self.green = 0
-        self.orange = 0
-        self.black = 0
-        max_cd = 0
-        min_cd = 99999999999
-        print(what, 'data is', data)
-        for x in data:
-            print('x is', x)
-            if x['plant_level']:
-                self.black += 1
-                if x['left_times']:
-                    self.orange += 1
-                    if x['cd']:
-                        if x['cd'] < min_cd:
-                            min_cd = x['cd']
-                        if x['cd'] > max_cd:
-                            max_cd = x['cd']
-                    else:
-                        self.green += 1
-
-        if not self.black:
-            min_cd = 0
-
-        print('{}: {}/{}/{}, {} -> {}'.format(what, self.black, self.green,
-                                              self.orange, min_cd, max_cd))
-        self.what = CInfo(self, name=what[0:2],
-                          fields=('black', 'green', 'orange'))
-        self.cd1 = CountDown(self, when=min_cd)
-        self.cd2 = CountDown(self, when=max_cd)
-
+        self.group(data)
+        self.grp = []
+        self.what = tk.Label(self, text=what[0:2])
+        self.grp = [CountDown(self, next=False,
+                              name=self.groups[g]['nb'],
+                              when=self.groups[g]['min'])
+                    for g in sorted(self.groups)]
         self.what.grid(row=0, column=0, sticky=tk.W)
-        self.cd1.grid(row=0, column=1, sticky=tk.W+tk.E)
-        self.cd2.grid(row=0, column=2, sticky=tk.E)
         self.columnconfigure(0,weight=1)
-        self.columnconfigure(1,weight=1)
-        self.columnconfigure(2,weight=1)
+        for n in range(len(self.grp)):
+            self.grp[n].grid(row=0, column=n+1, sticky=tk.W+tk.E)
+            self.columnconfigure(n+1,weight=1)
+        self.grid(row=row, column=col, sticky=tk.E+tk.W)
 
+    def group(self, lst):
+        grp_lst = dict()
+        for entry in lst:
+            if entry['plant_level'] and entry['left_times']:
+                this_cd = entry['cd']
+                for grp_cd, grp_value in grp_lst.items():
+                    if abs(grp_cd - this_cd) < 60:
+                        grp_value['nb'] += 1
+                        if this_cd < grp_value['min']:
+                            grp_value['min'] = this_cd
+                        if this_cd > grp_value['max']:
+                            grp_value['max'] = this_cd
+                        break
+                else:
+                    grp_lst[this_cd] = {'min': this_cd, 'max': this_cd, 'nb': 1}
+        self.groups = grp_lst
+    def refresh(self):
+        for g in self.grp:
+            g.refresh()
 
-class ManorLine(tk.Frame):
-    def __init__(self, master, who, data):
-        super().__init__(master, relief=tk.RAISED, border=1)
-        self.who = tk.Label(self, text=who)
-        self.flowers = ManorCount(self, 'Flowers', data[1])
-        self.fruits = ManorCount(self, 'Fruits', data[2])
+class ManorLine():
+    def __init__(self, master, data, row):
+        p = players[data[1]]
+        self.who = tk.Label(master,
+                            text='{:<30s} {:>3d}'.format(p.name, p.level))
+        print('ManorLine', data)
         self.who.grid(row=0, column=0, sticky=tk.W)
-        self.flowers.grid(row=0, column=1, sticky=tk.W+tk.E)
-        self.fruits.grid(row=0, column=2, sticky=tk.E)
-        self.columnconfigure(0,weight=1)
-        self.columnconfigure(1,weight=1)
-        self.columnconfigure(2,weight=1)
+        self.flowers = ManorGroup(master, 'Flowers', data[2], col=1, row=row)
+        self.fruits = ManorGroup(master, 'Fruits', data[3], col=2, row=row)
+    def refresh(self):
+        self.flowers.refresh()
+        self.fruits.refresh()
+    def set(self, data):
+        self.who.config(text=data[1])
+        self.flowers.group(data[2])
+        self.fruits.group(data[3])
+        self.flowers.refresh()
+        self.fruits.refresh()
 
 class Manor(tk.Toplevel):
-    def __init__(self, master, manors):
+    def __init__(self, master, player, friends):
         super().__init__(master, relief=tk.RAISED, border=1)
-        self.title = ManorLine(self, 'My Self', manors['My Self'])
-        self.title.grid(row=0, column=0, sticky=tk.E+tk.W)
+        self.title = ManorLine(self, manors[player], row=0)
+        self.mlines = dict()
+        self.friends = friends
+        self.set()
         self.columnconfigure(0,weight=1)
-    def set(self, data):
-        pass
+        self.columnconfigure(1,weight=1)
+        self.columnconfigure(2,weight=1)
+
+        
+    def set(self):
+        by_level = sorted(manors.values(), reverse=True,
+                          key=lambda x: x[0] if x[1] in self.friends else 0)
+
+        print('set', len(by_level), '/', len(manors))
+        for i in range(len(by_level)):
+            if i > 25:
+                break
+            who = by_level[i][1]
+            
+            if who in self.mlines:
+                self.mlines[who].set(by_level[i])
+            else:
+                self.mlines[who] = ManorLine(self, by_level[i], row=i+1)
+            # self.mlines[who].grid(row=i+1, column=0, sticky=tk.E+tk.W)
+            print('line for', who, 'at', i+1)
+
     def refresh(self):
-        pass
+        self.title.refresh()
+        for m in self.mlines.values():
+            if m:
+                m.refresh()
     
 
 class CountDown(tk.Frame):
@@ -127,8 +182,8 @@ class CountDown(tk.Frame):
             self.value.grid(row=0, column=1,sticky=tk.E)
         for k,v in kwargs.items():
             setattr(self,k,v)
-        register(self.tick)
-    def tick(self):
+
+    def refresh(self):
         v = self.elapsed()
         bkg = 'white'
         if not self.up:
@@ -153,11 +208,13 @@ class CountDown(tk.Frame):
             return '???'
         val = time.time()-self.start
         if not self.up:
-            if val >= self.when and self.next:
-                self.start = time.time()
-                self.when = self.next
-                val = 0
-
+            if val >= self.when:
+                if self.next:
+                    self.start = time.time()
+                    self.when = self.next
+                    val = 0
+                else:
+                    self.when = val
             val = self.when - val
         return int(val)
     def set_cd(self, new_val):
@@ -165,10 +222,11 @@ class CountDown(tk.Frame):
         self.when = new_val
 
 class CInfo(tk.Frame):
-    def __init__(self, master, name=None, fmt=None, fields={}, **kwargs):
-        super().__init__(master, relief=tk.RAISED, border=1, bg='grey')
+    def __init__(self, master, name=None, fmt=None, fields={}, debug=False, **kwargs):
+        super().__init__(master, relief=tk.RAISED, border=1, bg='lightgrey')
         self.name = name
         self.fmt = fmt
+        self.debug = debug
         if name:
             self.what = tk.Label(self, text=self.name)
             self.what.grid(row=0, column=0, sticky=tk.W)
@@ -182,6 +240,8 @@ class CInfo(tk.Frame):
                 (fname, fmt) = f
             else:
                 (fname, fmt) = (f, '{%s}' % f)
+            if self.debug:
+                print('format for', fname, ':', fmt)
             setattr(self, fname, '')
             self.format[fname] = fmt
             self.values[fname] = tk.Label(self, text='', fg=fname, bg='grey')
@@ -192,17 +252,20 @@ class CInfo(tk.Frame):
             setattr(self,k,v)
         self.refresh()
     def set(self, **kwargs):
-        for k,v in kwargs.items():
-            setattr(self,k,v)
+        self.__dict__.update(kwargs)
         self.refresh()
     def refresh(self, **kwargs):
         v = vars(self)
         v.update(kwargs)
+
         for f in self.values:
+
             try:
                 tx = self.format[f].format(**v)
             except:
                 tx = sys.exc_info()[1]
+            if self.debug:
+                print('refresh for', f, ':', tx)
             self.values[f].config(text=tx)
             
 class Info(tk.Frame):
@@ -253,7 +316,11 @@ class Hud(tk.Frame):
         self.last_upd = time.time()
     def tick(self):
         self.last_upd = time.time()
-
+    def refresh(self):
+        self.title.refresh()
+        self.exo.refresh()
+        self.d_content.refresh()
+        self.exp.refresh()
 
 class MainHud(tk.Frame):
     def __init__(self, master):
@@ -271,6 +338,13 @@ class MainHud(tk.Frame):
         # self.orcs.grid(sticky=tk.E+tk.W)
         self.creeps.grid(sticky=tk.E+tk.W)
         self.columnconfigure(0,weight=1)
+    def refresh(self):
+        self.started.refresh()
+        self.dailies.refresh()
+        self.mine.refresh()
+        self.creeps.refresh()
+        self.bossS.refresh()
+        self.bossG.refresh()
 
 class Gui():
     huds = dict()
@@ -285,14 +359,24 @@ class Gui():
             h = Hud(self.main_frame, i)
             h.grid(row=0)
             self.huds[i['tag']] = h
-        self.master.after(500, self.next_tick)
+        self.master.after(500, self.refresh)
+        self.Manors = dict()
 
-    def next_tick(self):
-        global todo
-        for f in todo:
-            f()
+    def refresh(self):
+        try:
+            self.read_command()
+            self.general.refresh()
+            for k, h in self.huds.items():
+                if h:
+                    h.refresh()
+            for k, m in self.Manors.items():
+                if m:
+                    m.refresh()
+        except:
+            traceback.print_exc()
 
-        self.master.after(500, self.next_tick)
+        self.master.lift()
+        self.master.after(500, self.refresh)
 
     def read_command(self):
         while not self.queue.empty():
@@ -303,7 +387,8 @@ class Gui():
             if xx:
                 # print('Read', xx)
                 who = xx.pop('who')
-                if who not in self.huds:
+                if who not in self.huds or not self.huds[who]:
+                    print('new HUD for', who)
                     h = Hud(self.main_frame, tag=who)
                     self.huds[who] = h
                     h.grid(row=0, column=len(self.huds))
@@ -318,11 +403,10 @@ class Gui():
                         getattr(self, k)(xx[k], h)
         
         for k,h in self.huds.items():
-            if time.time() - h.last_upd > 60:
+            if h and time.time() - h.last_upd > 300:
                 print('nuke idle', k)
                 h.destroy()
                 self.huds[k] = None
-
 
 
     def xp(self, d, hud):
@@ -360,34 +444,40 @@ class Gui():
         hud.tick()
 
     def manor(self, d, hud):
-        manor = dict()
-        if 'self' in d:
-            self.I_am({'player_name':  d['lands'][0]['planter_name']}, hud)
+        me = getattr(self, 'whoami', None)
 
-            for k in d['friends']:
-                if 'name' in k and 'player_id' in k:
-                    players[k['name']] = k['player_id']
-                    players[k['player_id']] = k['name']
-            
         fields = ('cd', 'left_times', 'plant_level', 'seed_level', 'lev')
         p_list = [{k: x[k] for k in fields} for x in d['lands']]
         f_list = [{k: x[k] for k in fields} for x in d['flowers']]
 
-        if 'self' in d:
-            manor['My Self'] = (0, p_list, f_list)
-        else:
-            manor[players[d['player_id']]] = (d['level'], p_list, f_list)
+        
+        if 'self' in d and d['self']:
+            me = d['lands'][0]['planter_name']
+            self.I_am({'player_name':  me}, hud)
+            friends = [x['name'] for x in d['friends']]
+            for k in d['friends'] + [{'name': me, 'player_id': d['player_id'],
+                                      'level': 0}]:
+                v = {l: k[l] for l in ('name', 'player_id', 'level')}
+                if k['name'] not in players:
+                    players[k['name']] = Player(**v)
+                    players[k['player_id']] = players[k['name']]
+                else:
+                    players[k['name']].update(**v)
 
-
-        if not hasattr(self, 'Manor'):
-            self.Manor=Manor(self.master, manors=manor)
-        else:
-            self.Manor.set(manors=manor)
-        self.Manor.refresh()
+        p = players[d['player_id']]
+        manors[p.name] = (p.level, p.name, p_list, f_list)
+        print(me, 'added manor for', p.name)
+        if me:
+            if me not in self.Manors:
+                self.Manors[me]=Manor(self.master, me, friends)
+            else:
+                self.Manors[me].set()
+            self.Manors[me].refresh()
 
         
     def I_am(self, d, hud=None):
-        hud.title.tag = d['player_name']
+        self.whoami = d['player_name']
+        hud.title.tag = self.whoami
         hud.title.refresh()
         hud.tick()
 
@@ -403,14 +493,9 @@ class Client():
         self.master = master
         self.queue = q
         self.gui = Gui(self.master, self.queue, {})
-        register(self.gui.read_command)
-        self.master.after(100, self.gui.next_tick)
+        self.master.after(100, self.gui.refresh)
 
         
-def register(func):
-    global todo
-    todo.append(func)
-
 
 if __name__ == '__main__':
     f = []
