@@ -5,6 +5,7 @@ from multiprocessing import Process, Queue
 import getopt, traceback
 from boq import sniffer
 import sqlite3
+from db import player_db, Player
 
 todo = []
 players = dict()
@@ -17,72 +18,8 @@ levels = {
     99: 241e6,
     101: 261e6,
     102: 262e6,
+    103: 263e6,
 }
-
-TheDb = None
-Player_Db = None
-
-class Generic():
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
-
-class MyDb():
-    def __init__(self, db, table, fields): 
-        self.table = table
-        self.fields = fields
-        fdef = ','.join(['{} {}'.format(x[0], x[1]) for x in fields])
-        db.execute('create if not exists {} ({})'.format(table, fdef))
-        db.row_factory = sqlite3.Row
-    def get(self, **kwargs):
-        if kwargs:
-            where = ' and '.format('{} = ?'.format(k) for k in kwargs)
-            vals = kwargs.values()
-        else:
-            where = ''
-            vals = []
-        c = db.execute('select * from {} {}'.format(self.table, where), vals)
-        r = [Generic(x) for x in c]
-        return r if len(r) != 1 else r[0]
-    def update(self, vals, **kwargs):
-        sets = ', '.join([k + ' = ?' for k in vals])
-        where = ' and '.join([k + ' = ?' for k in kwargs])
-        db.execute('update {} set {} {}'.format(self.table, sets, where))
-
-def player_db():
-    _fields = (('player_id', 'int primary key'),
-               ('name', 'text')
-               ('level', 'int'))
-    _name = 'player'               
-    if not TheDb:
-        TheDb = sqplite3.connect('boq_data.db')
-    if not Player_db:
-        Player_Db = MyDb(db=TheDb, table=_name, fields=_fields)
-    return Player_Db
-
-class Player():
-    db = player_db()
-    _fields = ('name', 'level', 'player_id')
-    def __init__(self,**kwargs):
-        self.__dict__.update(kwargs)
-    def update(self, **kwargs):
-        save = False
-        for k, v in kwargs.items():
-            if getattr(self, k, False) != v:
-                save = True
-                setattr(self, k, v)
-        if save:
-            self.save()
-    def save(self):
-        """insert or update. Special care about level so it doesn decrease"""
-        old_p = self.db.get(player_id=self.player_id)
-        if not old_p:
-            self.db.insert({k: getattr(self,k) for k in self._fields})
-        elif old_p.level < self.level:
-            self.db.update({'name': self.name, 'level': self.level},
-                           player_id=self.player_id)
-        else:
-            self.db.update({'name': self.name}, player_id=self.player_id)
-
 
 
 class MineW(tk.Frame):
