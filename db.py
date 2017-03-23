@@ -1,7 +1,7 @@
 import sqlite3
 
 TheDb = None
-Player_Db = None
+AllDbIns = dict()
 
 class Generic():
     def __init__(self, row):
@@ -54,30 +54,45 @@ def player_db(*args, **kwargs):
         print('New player DB')
     return Player_Db
 
-def memoize(var=None, fields=('key',)):
+def instance_db(name=None, fields=None):
+    global TheDb
+    if not TheDb:
+        TheDb = sqlite3.connect('boq_data.db')
+    print('pdb', name, fields)
+
+    if name not in AllDbIns:
+        AllDbIns[name] = MyDb(db=TheDb, table=name, fields=fields)
+        print('New DB for', name)
+    return AllDbIns[name]
+
+
+def memoize(var=None, keys=('key',), fdefs=tuple(), name=''):
     """ 
     Some basic memoizer
     """
     var = dict() if not var else var
     def wrap(f):
         def memoized(*args, **kwargs):
-            for ft in fields:
+            for ft in keys:
                 if ft in kwargs:
-                    key = ft
+                    the_key = ft
                     break
-            if kwargs[key] not in var:
-                var[kwargs[key]] = f(*args, **kwargs)
-            return var[kwargs[key]]
+            if kwargs[the_key] not in var:
+                f._fdefs = fdefs
+                f._name = name
+                var[kwargs[the_key]] = f(*args, **kwargs)
+            return var[kwargs[the_key]]
         return memoized
     return wrap
 
-@memoize(fields=('player_id',))
+@memoize(name='player', keys=('player_id',),
+         fdefs = (('player_id', 'int primary key'),
+                  ('name', 'text'), ('level', 'int')))
 class Player():
-    db = player_db()
-    _fields = ('name', 'level', 'player_id')
-    def __init__(self, key=None, **kwargs):
-        print('New player', key)
-        self.key = key
+    def __init__(self, **kwargs):
+        print('New player', kwargs['name'])
+        self.db = instance_db(name=self._name, fields=self._fdefs)
+        self._fields = (x[0] for x in self._fdefs)
         self.__dict__.update(kwargs)
     def update(self, **kwargs):
         save = False
