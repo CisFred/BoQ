@@ -106,13 +106,7 @@ def decode(d):
 
 @handler('03_07', '04_07')
 def decode(d):
-  where = list(d.keys())[0]
-  items = d[where]
-  size = len(items)
-  print(where, size, 'items')
-  if False:
-    for i in items:
-      print('{num} {id} {price}'.format(i))
+  return {'inventory': d}
 
 @handler('49_08')
 def decode(d):

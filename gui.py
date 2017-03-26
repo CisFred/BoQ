@@ -5,21 +5,95 @@ from multiprocessing import Process, Queue
 import getopt, traceback
 from boq import sniffer
 import sqlite3
-from db import player_db, Player
+from db import Player, Stuff, Recipe, find, AllDbIns, DbFields, InitDbs, CommitDb, SaveEntry, DeleteEntry
 
 todo = []
 players = dict()
 manors = dict()
+stuff = dict()
 
 levels = {
     87: 31.33e6,
     88: 331638660,
     89: 351134060,
+    93: 112e6,
     99: 241e6,
     101: 261e6,
     102: 262e6,
     103: 263e6,
+    104: 264e6,
 }
+
+class Asker(tk.Toplevel):
+    def __init__(self, master, *args, cls, **kwargs):
+        super().__init__(master)
+        self.title = tk.Label(self, text="What is")
+        self.cls = cls
+        self.vals = dict()
+        for i in range(len(args)):
+            f = args[i]
+            w1 = tk.Label(self, text=f)
+            self.vals[f] = tk.StringVar()
+            if f not in kwargs:
+                v = ''
+                w2 = tk.Entry(self, textvariable=self.vals[f])
+            else:
+                v = kwargs.pop(f)
+                w2 = tk.Label(self, textvariable=self.vals[f])
+
+            self.vals[f].set(v)
+            w1.grid(row=i+1, column=0, sticky=tk.W)
+            w2.grid(row=i+1, column=1, sticky=tk.E)
+        for i2 in range(len(kwargs)):
+            f = list(kwargs.keys())[i2]
+            w1 = tk.Label(self, text=f)
+            w2 = tk.Label(self, text=kwargs[f])
+            w1.grid(row=i+i2+2, column=0, sticky=tk.W)
+            w2.grid(row=i+i2+2, column=1, sticky=tk.E)
+        qt = tk.Button(self, text='Cancel', command=self.destroy)
+        ac = tk.Button(self, text='Save', command=self.saveme)
+        qt.grid(row=i+i2+3, column=0, sticky=tk.W)
+        ac.grid(row=i+i2+3, column=1, sticky=tk.E)
+    def saveme(self):
+        v = {x: self.vals[x].get() for x in self.vals}
+        print("Saveme", v)
+        self.cls(**v).save()
+        self.destroy()
+
+class OneDb(tk.Toplevel):
+    def __init__(self, master, key):
+        super().__init__(master, relief=tk.RAISED, border=1)
+        fd = [x[0] for x in DbFields[key]]
+        mlen = range(len(fd))
+        for i in mlen:
+            x = tk.Label(self, text=fd[i])
+            x.grid(row=0, column=i, sticky=tk.W+tk.E)
+        all = AllDbIns[key].get()
+        rlen = range(len(all))
+        for j in rlen:
+            vdict = dict()
+            for i in mlen:
+                vdict[fd[i]] = v = tk.StringVar()
+                v.set(getattr(all[j],fd[i], '?'+fd[i]+'?'))
+                x = tk.Entry(self, text=v)
+                x.grid(row=j+1, column=i, sticky=tk.W+tk.E)
+            d = tk.Button(self, text='x',
+                          command=lambda k=key,v=vdict: DeleteEntry(k,v))
+            s = tk.Button(self, text='V',
+                          command=lambda k=key,v=vdict: SaveEntry(k,v))
+            d.grid(row=j+1, column=i+1)
+            s.grid(row=j+1, column=i+2)
+
+        for i in mlen:
+            self.columnconfigure(i, weight=1)
+
+class ShowDb(tk.Toplevel):
+    def __init__(self, master):
+        super().__init__(master, relief=tk.RAISED, border=1)
+        for k in AllDbIns:
+            w = tk.Button(self, text=k, command=lambda x=k,m=master: OneDb(m,x))
+            w.grid(sticky=tk.E+tk.W)
+            
 
 
 class MineW(tk.Frame):
@@ -319,12 +393,17 @@ class MainHud(tk.Frame):
         self.creeps = CountDown(self, name='C', at=([7,0],[13,30],[16,0]))
         self.bossS = CountDown(self, name='BW', at=([9, 0],[14,30]))
         self.bossG = CountDown(self, name='GB')
+        self.show_db = tk.Button(self, text='Show Db',
+                                 command=lambda m=master: ShowDb(master))
+        self.bye = tk.Button(self, text='Quit', command=self.bye)
         self.started.grid(sticky=tk.E+tk.W)
         self.dailies.grid(sticky=tk.E+tk.W)
         self.mine.grid(sticky=tk.E+tk.W)
         # self.orcs.grid(sticky=tk.E+tk.W)
         self.creeps.grid(sticky=tk.E+tk.W)
         self.columnconfigure(0,weight=1)
+        self.show_db.grid(sticky=tk.E+tk.W)
+        self.bye.grid(sticky=tk.E+tk.W)
     def refresh(self):
         self.started.refresh()
         self.dailies.refresh()
@@ -332,6 +411,9 @@ class MainHud(tk.Frame):
         self.creeps.refresh()
         self.bossS.refresh()
         self.bossG.refresh()
+    def bye(self):
+        CommitDb()
+        sys.exit(0)
 
 class Gui():
     huds = dict()
@@ -362,7 +444,7 @@ class Gui():
         except:
             traceback.print_exc()
 
-        self.master.lift()
+        # self.master.lift()
         self.master.after(500, self.refresh)
 
     def read_command(self):
@@ -415,9 +497,33 @@ class Gui():
         n = 0
         for (a,b) in [x.split(':') for x in d['mystic_status'].split(',')]:
             n += int(b)
+        for (a,b) in [x.split(':') for x in d['mystic_record'].split(',')]:
+            (fields, obj) = find('stuff', id_short_1=b)
+            if not obj:
+                Asker(self.master, *fields, cls=Stuff, id_short_1=b,
+                      position=a)
         hud.exo.nb = n if n else ' '
         hud.exo.set_cd(d['left_time'])
         hud.tick()
+
+    def inventory(self, d, hud):
+        n = 0
+        max = 2
+        if 'backpack' in d:
+            for x in d['backpack']:
+                r = n // 6
+                c = n % 6
+                n += 1
+                (fields, obj) = find('stuff', id=x['id'])
+                if not obj:
+                    if max:
+                        if 'price' in x and 'num' in x:
+                            x['price'] //= x['num']
+                        Asker(self.master, *fields, cls=Stuff, **x,
+                              row=r, col=c)
+                        max -= 1
+        hud.tick()
+
 
     def dailies(self, d, hud):
         self.general.dailies.set_cd(d['next_refresh']);
@@ -450,6 +556,8 @@ class Gui():
                     players[k['player_id']] = players[k['name']]
                 else:
                     players[k['name']].update(**v)
+        else:
+            friends = []
 
         p = players[d['player_id']]
         manors[p.name] = (p.level, p.name, p_list, f_list)
@@ -526,6 +634,7 @@ if __name__ == '__main__':
     q = Queue()
     root = tk.Tk()
     g = Client(root, q)
+    InitDbs()
     p = Process(target=sniffer, args=(q, filter, out))
     p.start()
     root.mainloop()

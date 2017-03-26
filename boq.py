@@ -23,7 +23,7 @@ def handle_command(t, b):
       try:
         (ln,c1,c2) = unpack(">I2B", load[0:6])
         r = amfy.loads(load[10:])
-        # print("Sending {:02x}_{:02X} {}".format(c1,c2,r))
+        print("Sending {:02x}_{:02X} {}".format(c1,c2,r))
       except:
         log('short load outbound', sys.exc_info(), load)
   # else:
