@@ -30,10 +30,10 @@ class DbView(ttk.Frame):
         self.tree.bind('<Double-1>', self.update)
 
     def update(self, event):
-        print('update', event.x, event.y, self.tree.item(self.tree.focus()))
+        print('update', event.x, event.y, self.tree.set(self.tree.focus()))
         y = self.tree.identify_row(event.y)
         x = self.tree.identify_column(event.x)
-        print('  elem', x, y)
+        print('  elem', self.tree.column(x,'id'), y)
 
     def populate(self, args):
         try:
