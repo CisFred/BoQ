@@ -2,9 +2,78 @@ import sys
 import tkinter as tk
 from tkinter import ttk     #@Reimport
 import sqlite3
-from peewee import *
+import traceback
+# from peewee import *
 
 root = None
+
+class GenView(tk.Toplevel):
+    def __new__(cls, master, hud, name, js):
+        if name not in hud.tmp:
+            print('Old GV', name, super())
+        else:
+            print('New GV', name, super(GenView, cls))
+            hud.tmp[name] = super().__new__(cls)
+        return hud.tmp[name]
+
+    def __init__(self, master, hud, name, js):
+        if hasattr(self, 'hud'):
+            print('Already there', self.name)
+            return
+        super().__init__(master, name=name.lower())
+        self.grid()
+        self.master = master
+        self.hud = hud
+        print('DbView', name)
+        self.name = name
+        tk.Label(self, text=name).grid(columnspan=2, sticky=tk.EW)
+        c = 1
+        try:
+            for k in js.keys():
+                lb = tk.Label(self, text=k)
+                if isinstance(js[k], list):
+                    v = '{} entries'.format(len(js[k]))
+                    vl = tk.Label(self, text=v)
+                    fn = lambda e,v=js[k],f=k: self.show(v, f)
+                    vl.bind('<Double-1>', fn)
+                    lb.bind('<Double-1>', fn)
+                else:
+                    v = '{:.30s}'.format(str(js[k]))
+                    vl = tk.Label(self, text=v)
+                lb.grid(row=c, column=0, sticky=tk.W)
+                vl.grid(row=c, column=1, sticky=tk.W)
+                c += 1
+            self.rowconfigure(0, weight=1)
+            self.rowconfigure(1, weight=1)
+        except:
+            try:
+                cln = [x for x in js[0].keys()]
+                self.tree = ttk.Treeview(self, columns=cln,
+                                         displaycolumns='#all')
+                self.tree.column('#0', stretch=0, width=2)
+                for f in cln:
+                    self.tree.heading(f, text=f,
+                                      command=lambda f=f: self.sort(f, False))
+                    self.tree.column(f, width=70)
+
+                sb = ttk.Scrollbar(self, orient=tk.VERTICAL,
+                                   command= self.tree.yview)
+                self.tree['yscroll'] = sb
+                self.tree.grid(row=0, column=0, sticky=tk.NSEW)
+                sb.grid(row=0, column=1, sticky=tk.NS)
+                self.rowconfigure(0, weight=1)
+                self.columnconfigure(0, weight=1)
+                for a in js:
+                    self.tree.insert('', tk.END, None,
+                                     values=[a[f] for f in cln])
+            except:
+                traceback.print_exc()
+                print('js', js)
+
+    def show(self, v, f):
+        GenView(self.master, self.hud, self.name + ' ' + f, v)
+
+
 
 class DbView(ttk.Frame):
     def __init__(self, master, name):
@@ -34,6 +103,21 @@ class DbView(ttk.Frame):
         self.columnconfigure(0, weight=1)
         self.tree.bind('<Double-1>', self.edit)
         self.populate(map(list,r.fetchall()))
+    def s_val(self, v):
+        try:
+            return int(v[0])
+        except:
+            return v[0]
+    def sort(self, col, d):
+        l = [(self.tree.set(k,col), k) for k in self.tree.get_children('')]
+        try:
+            l.sort(key=self.s_val, reverse=d)
+        except:
+            l.sort(key=lambda x: x[0], reverse=d)
+        for i, (v, k) in enumerate(l):
+            self.tree.move(k, '', i)
+        self.tree.heading(col, text=col,
+                          command=lambda f=col: self.sort(f, not d))
 
 
     def get_db(self, name):
@@ -50,10 +134,12 @@ class DbView(ttk.Frame):
     def populate(self, args):
         try:
             for a in args:
+                print('aa', a)
                 self.tree.insert('', tk.END, a[0], values=a)
         except:
             try:
                 for a in args(self.name, self.fields):
+                    print('a', a)
                     self.tree.insert('', tk.END, a[0], values=a)
             except:
                 self.tree.insert('', tk.END, a[0], values=a)

@@ -6,6 +6,7 @@ import getopt, traceback
 from boq import sniffer
 import sqlite3
 from db import Player, Stuff, Recipe, find, AllDbIns, DbFields, InitDbs, CommitDb, SaveEntry, DeleteEntry
+from dbnext import GenView
 
 todo = []
 players = dict()
@@ -13,7 +14,25 @@ manors = dict()
 stuff = dict()
 
 levels = {
-    87: 31.33e6,
+    47: 1656640,
+    48: 1826140,
+    53: 2900200,
+    54: 3165972,
+    55: 3446932,
+    58: 4425480,
+    59: 4797672,
+    64: 7050400,
+    65: 7592000,
+    67: 8771660,
+    68: 9421863,
+    69: 10094900,
+    70: 10818200,
+    71: 11584000,
+    72: 12393900,
+    73: 13249800,
+    74: 14150000,
+    80: 37131760,
+    87: 313300000,
     88: 331638660,
     89: 351134060,
     93: 112e6,
@@ -22,6 +41,7 @@ levels = {
     102: 262e6,
     103: 263e6,
     104: 264e6,
+    105: 265e6,
 }
 
 class Asker(tk.Toplevel):
@@ -361,6 +381,7 @@ class Info(tk.Frame):
 class Hud(tk.Frame):
     def __init__(self, master, tag, who='Unknown'):
         super().__init__(master)
+        self.tmp = dict()
         self.title = Info(self, name='', tag=tag, centered=True, fmt='{tag}')
         self.exo = CountDown(self, name='E_M', when=None, next=3600,
                              fmt='{nb}', nb='')
@@ -493,15 +514,22 @@ class Gui():
     def mine_refresh(self, d, hud):
         self.general.mine.set_cd(d)
 
+    def mine(self, d, hud):
+        GenView(self.master, hud, name='Mine ' + d['what_cmd'], js=d)
+
+
     def merchant_refresh(self, d, hud):
         n = 0
         for (a,b) in [x.split(':') for x in d['mystic_status'].split(',')]:
             n += int(b)
+        max = 2
         for (a,b) in [x.split(':') for x in d['mystic_record'].split(',')]:
             (fields, obj) = find('stuff', id_short_1=b)
             if not obj:
-                Asker(self.master, *fields, cls=Stuff, id_short_1=b,
-                      position=a)
+                if max:
+                    Asker(self.master, *fields, cls=Stuff, id_short_1=b,
+                          position=a)
+                    max -= 1
         hud.exo.nb = n if n else ' '
         hud.exo.set_cd(d['left_time'])
         hud.tick()
@@ -536,8 +564,13 @@ class Gui():
         hud.d_content.set(black=d['done'], blue=p[3], purple=p[4], yellow=p[5])
         hud.tick()
 
+    def play_gen(self, d, huf):
+        GenView(self.master, hud, name=d.pop('what_cmd'), js=d)
+
     def manor(self, d, hud):
         me = getattr(self, 'whoami', None)
+
+        GenView(self.master, hud, name='Manor ' + d['what_cmd'], js=d)
 
         fields = ('cd', 'left_times', 'plant_level', 'seed_level', 'lev')
         p_list = [{k: x[k] for k in fields} for x in d['lands']]
@@ -553,12 +586,14 @@ class Gui():
                 v = {l: k[l] for l in ('name', 'player_id', 'level')}
                 if k['name'] not in players:
                     players[k['name']] = Player(**v)
-                    players[k['player_id']] = players[k['name']]
                 else:
                     players[k['name']].update(**v)
+                players[k['name']].save()
         else:
             friends = []
 
+        CommitDb()
+        return
         p = players[d['player_id']]
         manors[p.name] = (p.level, p.name, p_list, f_list)
         print(me, 'added manor for', p.name)
@@ -577,7 +612,13 @@ class Gui():
         hud.tick()
 
     def associate(self, d, hud):
-        pass
+        global players
+        try:
+            if d['name'] not in players:
+                p = Player(**d).save()
+        except:
+            traceback.print_exc()
+            print('players:', players)
 
     def quit(self):
         print('bubye')
@@ -635,6 +676,9 @@ if __name__ == '__main__':
     root = tk.Tk()
     g = Client(root, q)
     InitDbs()
+    for p in AllDbIns['player'].get():
+        players[p.name] = players[p.player_id] = p
+    
     p = Process(target=sniffer, args=(q, filter, out))
     p.start()
     root.mainloop()

@@ -66,7 +66,7 @@ def handle_info(t, b):
     
 
   if cmd in handled:
-    res = handled[cmd](r)
+    res = handled[cmd](r, what_cmd=cmd)
     if res:
       res.update({'who': t})
       # print('res is', res)

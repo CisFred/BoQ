@@ -3,19 +3,19 @@ import sqlite3
 TheDb = None
 AllDbIns = dict()
 
-DbFields =  {'player': (('player_id', 'int primary key'),
-                      ('name', 'text'), ('level', 'int')),
-           'stuff':  (('name', 'text primary key'), ('id', 'int'),
-                      ('id_short_1', 'int'), ('id_short_2', 'int'),
-                      ('price', 'int')),
-           'recipe': (('name', 'text primary key'),
-                      ('Rprice', 'int'), ('Oprice', 'int'),
-                      ('i1', 'int'), ('q1', 'int'),
-                      ('i2', 'int'), ('q2', 'int'),
-                      ('i3', 'int'), ('q3', 'int'),
-                      ('i4', 'int'), ('q4', 'int'),
-                      ('i5', 'int'), ('q5', 'int'),
-                      ('i6', 'int'), ('q6', 'int')),
+DbFields =  {'player': (('name', 'text primary key'),
+                        ('player_id', 'int'), ('level', 'int')),
+             'stuff':  (('name', 'text primary key'), ('id', 'int'),
+                        ('id_short_1', 'int'), ('id_short_2', 'int'),
+                        ('price', 'int')),
+             'recipe': (('recipe', 'text primary key'),
+                        ('i1', 'int'), ('q1', 'int'),
+                        ('i2', 'int'), ('q2', 'int'),
+                        ('i3', 'int'), ('q3', 'int'),
+                        ('i4', 'int'), ('q4', 'int'),
+                        ('i5', 'int'), ('q5', 'int'),
+                        ('i6', 'int'), ('q6', 'int'),
+                        ('i7', 'int'), ('q7', 'int')),
            }
 
 class Generic():
@@ -40,7 +40,7 @@ class MyDb():
             where = ''
             vals = []
         q = 'select * from {} {}'.format(self.table, where)
-        # print(q, vals)
+        print(q, vals)
         c = self.db.execute(q, vals)
         r = [Generic(r) for r in c.fetchall()]
         return r
@@ -48,13 +48,15 @@ class MyDb():
         sets = ', '.join([k + ' = ?' for k in vals])
         where = ' and '.join([k + ' = ?' for k in kwargs])
         q = 'update {} set {} where {}'.format(self.table, sets, where)
-        print(q, kwargs.values())
-        self.db.execute(q, kwargs.values())
+        vl = list(vals.values()) + list(kwargs.values())
+        print(q, vl)
+        self.db.execute(q, vl)
     def insert(self, **kwargs):
         fd = ','.join([k for k in kwargs])
         mk = ','.join(['?' for k in kwargs])
         vl = list(kwargs.values())
         q = 'insert into {} ({}) values({})'.format(self.table, fd, mk)
+        print(q, vl)
         self.db.execute(q, vl)
     def upsert(self, **kwargs):
         """ Generic upsert. If t"""
@@ -125,15 +127,21 @@ class Player():
             self.save()
     def save(self):
         """insert or update. Special care about level so it doesn decrease"""
-        old_p = self._db.get(player_id=self.player_id)
+        old_p = self._db.get(name=self.name)
+        old_p = old_p[0] if len(old_p) > 0 else None
+        if not old_p:
+            print('new player:', self.player_id)
+        else:
+            print('old player:', old_p.__dict__)
+
         if not old_p:
             vl = {k: getattr(self,k) for k in self._fields}
             self._db.insert(**vl)
         elif old_p.level < getattr(self,'level',0):
-            self._db.update({'name': self.name, 'level': self.level},
-                           player_id=self.player_id)
+            self._db.update({'level': self.level, 'player_id':self.player_id},
+                            name=self.name)
         else:
-            self._db.update({'name': self.name}, player_id=self.player_id)
+            self._db.update({'player_id':self.player_id}, name=self.name)
 
 
 @memoize(name='stuff')

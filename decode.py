@@ -69,13 +69,13 @@ def num_reduce(n):
   return '{} {}'.format(rv / 100, p)
 
 @handler('02_08')
-def decode(d):
+def decode(d, what_cmd):
   return {'xp': {'current_xp': num_reduce(d['zhujue_exp'])}}
 
 
 # Player stuff
 @handler('08_04')
-def decode(d):
+def decode(d, what_cmd):
   if 'name' in d and 'player_id' in d:
     players[d['name']] = d['player_id']
     players[d['player_id']] = d['name']
@@ -83,33 +83,41 @@ def decode(d):
   
 
 # Mine stuff
-@handler('41_11')
-def decode(d):
-  return {'mine_refresh': d['next_refresh']}
+@handler('41_11', '41_0C', '41_08')
+def decode(d, what_cmd):
+  d.update({'what_cmd': what_cmd})
+  return {'mine': d}
 
 
 
 @handler('1B_03', '08_08')
-def decode(d):
+def decode(d, what_cmd):
   if 'name' in d and 'player_id' in d:
     players[d['name']] = d['player_id']
     players[d['player_id']] = d['name']
   return {'associate': [d['player_id'], d['name']]}
 
 @handler('19_09')
-def decode(d):
+def decode(d, what_cmd):
+  d.update({'what_cmd': what_cmd})
   return {'manor': d}
 
 @handler('35_04')
-def decode(d):
+def decode(d, what_cmd):
   return {'merchant_refresh': d}
 
+# 0A/0A  potions
+@handler('4C_0A', '02_05', '09_08', '02_0B', '0A_0A')
+def decode(d, what_cmd):
+  d.update({'what_cmd': what_cmd})
+  return {'play_gen': d}
+
 @handler('03_07', '04_07')
-def decode(d):
+def decode(d, what_cmd):
   return {'inventory': d}
 
 @handler('49_08')
-def decode(d):
+def decode(d, what_cmd):
   n = None
   try:
     n = d['next_refresh']
@@ -119,7 +127,7 @@ def decode(d):
 
 
 @handler('25_0F')
-def decode(d):
+def decode(d, what_cmd):
     res = {'next_refresh': d['next_refresh_left_time'],
            'done': d['award_times'], 'possible': list()}
     for quest in d['pending']:

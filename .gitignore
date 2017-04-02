@@ -4,3 +4,5 @@ __pycache__/
 pkt/
 amfy_fail
 *~
+\#*
+.#*
