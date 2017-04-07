@@ -9,7 +9,7 @@ root = None
 
 class GenView(tk.Toplevel):
     def __new__(cls, master, hud, name, js):
-        if name not in hud.tmp:
+        if name in hud.tmp:
             print('Old GV', name, super())
         else:
             print('New GV', name, super(GenView, cls))

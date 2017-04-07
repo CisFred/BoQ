@@ -420,7 +420,7 @@ class MainHud(tk.Frame):
         self.started.grid(sticky=tk.E+tk.W)
         self.dailies.grid(sticky=tk.E+tk.W)
         self.mine.grid(sticky=tk.E+tk.W)
-        # self.orcs.grid(sticky=tk.E+tk.W)
+        self.orcs.grid(sticky=tk.E+tk.W)
         self.creeps.grid(sticky=tk.E+tk.W)
         self.columnconfigure(0,weight=1)
         self.show_db.grid(sticky=tk.E+tk.W)
@@ -517,6 +517,8 @@ class Gui():
     def mine(self, d, hud):
         GenView(self.master, hud, name='Mine ' + d['what_cmd'], js=d)
 
+    def player(self, d, hud):
+        p = Player(**d)
 
     def merchant_refresh(self, d, hud):
         n = 0

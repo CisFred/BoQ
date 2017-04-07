@@ -74,12 +74,10 @@ def decode(d, what_cmd):
 
 
 # Player stuff
-@handler('08_04')
+@handler('08_04', '08_06')
 def decode(d, what_cmd):
-  if 'name' in d and 'player_id' in d:
-    players[d['name']] = d['player_id']
-    players[d['player_id']] = d['name']
-  return {'I_am': {'player_id': d['player_id'], 'player_name': d['name']}}
+  d.update({'what_cmd': what_cmd})
+  return {'player': d}
   
 
 # Mine stuff
