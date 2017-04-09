@@ -9,7 +9,7 @@ root = None
 
 class GenView(tk.Toplevel):
     def __new__(cls, master, hud, name, js):
-        if name not in hud.tmp:
+        if name in hud.tmp:
             print('Old GV', name, super())
         else:
             print('New GV', name, super(GenView, cls))
@@ -129,7 +129,7 @@ class DbView(ttk.Frame):
     def edit(self, event):
         x = self.tree.identify_column(event.x)
         node = self.tree.focus()
-        Edit(self, node, self.tree.set(node), self.tree.column(x,'id'))
+        Edit(self, node, self.fields, self.tree.set(node), self.tree.column(x,'id'))
 
     def populate(self, args):
         try:
@@ -161,13 +161,16 @@ class DbView(ttk.Frame):
                           command=lambda f=col: self.sort(f, not d))
 
 class Edit(tk.Toplevel):
-    def __init__(self, view=None, node=None, values=None, col=0):
+    def __init__(self, view=None, node=None, fields=(), values=None, col=0):
         super().__init__(view.master if view else root)
         self.node = node
         self.view = view
         self.values = values
         r = 0
-        for k,v in values.items():
+        if not values:
+            values = {x: '' for x in fields}
+        for k in fields:
+            v = values[k]
             l = tk.Label(self, text=k)
             var = tk.StringVar()
             var.set(v)
@@ -206,6 +209,9 @@ class Edit(tk.Toplevel):
         if new_values:
             pk = self.view.db.fields[0]
             new_values[pk] = self.values[pk][0]
+            if not new_values[pk]:
+                new_values[pk] = self.values[pk][1].get()
+            print('save', pk, new_values[pk])
             self.view.db.upsert(**new_values)
             self.view.db.commit()
         self.destroy()
@@ -259,7 +265,7 @@ class MyDb():
                 t = "(select {} from {} where {} = ?)".format(f,self.table,
                                                               pkey)
                 vv.append(pval)
-                print('Add', t)
+                print('Add', t, vv)
                 v.append(t)
         q = 'insert or replace into {} ({}) values({})'
         q = q.format(self.table, ','.join(self.fields), ','.join(v))
