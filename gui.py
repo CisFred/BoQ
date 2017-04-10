@@ -5,11 +5,10 @@ from multiprocessing import Process, Queue
 import getopt, traceback
 from boq import sniffer
 import sqlite3
-from db import Player, Stuff, Recipe, find, AllDbIns, DbFields, InitDbs, CommitDb, SaveEntry, DeleteEntry
-from dbnext import GenView
+from ndb2 import Player, Stuff, Recipe
+from dbnext import GenView, Chooser
 
 todo = []
-players = dict()
 manors = dict()
 stuff = dict()
 
@@ -84,41 +83,6 @@ class Asker(tk.Toplevel):
         self.cls(**v).save()
         self.destroy()
 
-class OneDb(tk.Toplevel):
-    def __init__(self, master, key):
-        super().__init__(master, relief=tk.RAISED, border=1)
-        fd = [x[0] for x in DbFields[key]]
-        mlen = range(len(fd))
-        for i in mlen:
-            x = tk.Label(self, text=fd[i])
-            x.grid(row=0, column=i, sticky=tk.W+tk.E)
-        all = AllDbIns[key].get()
-        rlen = range(len(all))
-        for j in rlen:
-            vdict = dict()
-            for i in mlen:
-                vdict[fd[i]] = v = tk.StringVar()
-                v.set(getattr(all[j],fd[i], '?'+fd[i]+'?'))
-                x = tk.Entry(self, text=v)
-                x.grid(row=j+1, column=i, sticky=tk.W+tk.E)
-            d = tk.Button(self, text='x',
-                          command=lambda k=key,v=vdict: DeleteEntry(k,v))
-            s = tk.Button(self, text='V',
-                          command=lambda k=key,v=vdict: SaveEntry(k,v))
-            d.grid(row=j+1, column=i+1)
-            s.grid(row=j+1, column=i+2)
-
-        for i in mlen:
-            self.columnconfigure(i, weight=1)
-
-class ShowDb(tk.Toplevel):
-    def __init__(self, master):
-        super().__init__(master, relief=tk.RAISED, border=1)
-        for k in AllDbIns:
-            w = tk.Button(self, text=k, command=lambda x=k,m=master: OneDb(m,x))
-            w.grid(sticky=tk.E+tk.W)
-            
-
 
 class MineW(tk.Frame):
     def __init__(self, master):
@@ -176,7 +140,7 @@ class ManorGroup(tk.Frame):
 
 class ManorLine():
     def __init__(self, master, data, row):
-        p = players[data[1]]
+        p = Player(name=data[1])
         self.who = tk.Label(master,
                             text='{:<30s} {:>3d}'.format(p.name, p.level))
         print('ManorLine', data)
@@ -196,7 +160,7 @@ class ManorLine():
 class Manor(tk.Toplevel):
     def __init__(self, master, player, friends):
         super().__init__(master, relief=tk.RAISED, border=1)
-        self.title = ManorLine(self, manors[player], row=0)
+        self.title = ManorLine(self, manors[player.name], row=0)
         self.mlines = dict()
         self.friends = friends
         self.set()
@@ -414,18 +378,19 @@ class MainHud(tk.Frame):
         self.started = CountDown(self, name='Started', up=True)
         self.dailies = CountDown(self, name='D', when=None, next=1800)
         self.mine = MineW(self)
-        # self.orcs = CountDown(self, name='O', when=None, next=1800)
+        self.orcs = CountDown(self, name='O', when=None, next=1800)
         self.creeps = CountDown(self, name='C', at=([7,0],[13,30],[16,0]))
         self.bossS = CountDown(self, name='BW', at=([9, 0],[14,30]))
         self.bossG = CountDown(self, name='GB')
         self.show_db = tk.Button(self, text='Show Db',
-                                 command=lambda m=master: ShowDb(master))
+                                 command=lambda m=master: Chooser(master,
+                                                                  'boq_data.db'))
         self.bye = tk.Button(self, text='Quit', command=self.bye)
         self.started.grid(sticky=tk.E+tk.W)
         self.dailies.grid(sticky=tk.E+tk.W)
         self.mine.grid(sticky=tk.E+tk.W)
-        self.orcs.grid(sticky=tk.E+tk.W)
         self.creeps.grid(sticky=tk.E+tk.W)
+        self.orcs_on = False
         self.columnconfigure(0,weight=1)
         self.show_db.grid(sticky=tk.E+tk.W)
         self.bye.grid(sticky=tk.E+tk.W)
@@ -513,6 +478,9 @@ class Gui():
         hud.tick()
 
     def set_orcs(self, d, hud):
+        if not self.orcs_on:
+            self.orcs.grid(sticky=tk.E+tk.W)
+            self.orcs_on = True
         self.general.orcs.set_cd(d)
 
     def mine_refresh(self, d, hud):
@@ -528,14 +496,6 @@ class Gui():
         n = 0
         for (a,b) in [x.split(':') for x in d['mystic_status'].split(',')]:
             n += int(b)
-        max = 2
-        for (a,b) in [x.split(':') for x in d['mystic_record'].split(',')]:
-            (fields, obj) = find('stuff', id_short_1=b)
-            if not obj:
-                if max:
-                    Asker(self.master, *fields, cls=Stuff, id_short_1=b,
-                          position=a)
-                    max -= 1
         hud.exo.nb = n if n else ' '
         hud.exo.set_cd(d['left_time'])
         hud.tick()
@@ -548,12 +508,12 @@ class Gui():
                 r = n // 6
                 c = n % 6
                 n += 1
-                (fields, obj) = find('stuff', id=x['id'])
-                if not obj:
+                obj = Stuff.get(id=x['id'])
+                if not obj.name:
                     if max:
                         if 'price' in x and 'num' in x:
                             x['price'] //= x['num']
-                        Asker(self.master, *fields, cls=Stuff, **x,
+                        Asker(self.master, obj._fnames, cls=Stuff, **x,
                               row=r, col=c)
                         max -= 1
         hud.tick()
@@ -584,47 +544,38 @@ class Gui():
 
         
         if 'self' in d and d['self']:
-            me = d['lands'][0]['planter_name']
-            self.I_am({'player_name':  me}, hud)
+            me = Player.get(player_id = d['player_id'])[0]
+            self.I_am(me, hud)
             friends = [x['name'] for x in d['friends']]
-            for k in d['friends'] + [{'name': me, 'player_id': d['player_id'],
-                                      'level': 0}]:
-                v = {l: k[l] for l in ('name', 'player_id', 'level')}
-                if k['name'] not in players:
-                    players[k['name']] = Player(**v)
-                else:
-                    players[k['name']].update(**v)
-                players[k['name']].save()
         else:
             friends = []
 
-        CommitDb()
-        return
-        p = players[d['player_id']]
+
+        # return
+        p = Player(player_id = d['player_id'])
         manors[p.name] = (p.level, p.name, p_list, f_list)
         print(me, 'added manor for', p.name)
         if me:
             if me not in self.Manors:
-                self.Manors[me]=Manor(self.master, me, friends)
+                self.Manors[me.name]=Manor(self.master, me, friends)
             else:
-                self.Manors[me].set()
-            self.Manors[me].refresh()
+                self.Manors[me.name].set()
+            self.Manors[me.name].refresh()
 
         
-    def I_am(self, d, hud=None):
-        self.whoami = d['player_name']
+    def I_am(self, p, hud=None):
+        self.whoami = p.name
         hud.title.tag = self.whoami
+        hud.exp.next_level = levels[p.level] if p.level in levels else '--> {}'.format(p.level)
         hud.title.refresh()
         hud.tick()
 
     def associate(self, d, hud):
-        global players
         try:
-            if d['name'] not in players:
-                p = Player(**d).save()
+            p = Player(**d).save()
         except:
             traceback.print_exc()
-            print('players:', players)
+
 
     def quit(self):
         print('bubye')
@@ -681,10 +632,6 @@ if __name__ == '__main__':
     q = Queue()
     root = tk.Tk()
     g = Client(root, q)
-    InitDbs()
-    for p in AllDbIns['player'].get():
-        players[p.name] = players[p.player_id] = p
-    
     p = Process(target=sniffer, args=(q, filter, out))
     p.start()
     root.mainloop()

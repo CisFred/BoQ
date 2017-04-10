@@ -5,22 +5,24 @@ class BaseDb():
     _db = sqlite3.connect('boq_data.db')
     _db.row_factory = sqlite3.Row
     def __new__(cls, **kwargs):
-        # print('new Player', dir(o))
+        print('Player', kwargs)
         _pkey = cls._fields[0][0]
-        o = False
+
+        if _pkey in kwargs and kwargs[_pkey] in cls._store:
+            return cls._store[kwargs[_pkey]]
+
+        o = super().__new__(cls)
         if _pkey in kwargs:
-            if kwargs[_pkey] in cls._store:
-                o = cls._store[kwargs[_pkey]]
-        if not o:
-            o = super().__new__(cls)
-            o._table = cls._table
-            o._fields = cls._fields
-            o._store = cls._store
-            o._fnames = [x[0] for x in o._fields]
-            o._pkey = _pkey
-            p = cls.get(**kwargs)
-            if p:                   #  and len(p) == 1:
-                o.__dict__.update(dict(p[0]))
+            cls._store[kwargs[_pkey]] = o
+        o._table = cls._table
+        o._fields = cls._fields
+        o._store = cls._store
+        o._fnames = [x[0] for x in o._fields]
+        o._pkey = _pkey
+        [setattr(o, x, 0) for x in o._fnames if not hasattr(o,x)]
+        pls = cls.get(**kwargs)
+        if pls:                   #  and len(p) == 1:
+            return pls[0]
         return o
 
     def __init__(self, **kwargs):
@@ -44,7 +46,7 @@ class BaseDb():
               values)
         r = cls._db.execute('select * from {} {}'.format(cls._table, where),
                              values)
-        return r.fetchall()
+        return [cls(**dict(x)) for x in r.fetchall()]
     def save(self):
         print('save', self.__dict__)
 
@@ -58,8 +60,6 @@ class Player(BaseDb):
             kwargs.pop('level')
         super().__init__(**kwargs)
 
-        self.save()
-        self._store[kwargs[self._pkey]] = self
 
 class Stuff(BaseDb):
     _table = 'stuff'
