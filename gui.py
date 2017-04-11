@@ -1,4 +1,4 @@
-import os, sys, time, queue
+import os, sys, time, queue, math
 import tkinter as tk
 from datetime import timedelta, datetime
 from multiprocessing import Process, Queue
@@ -46,6 +46,29 @@ levels = {
     108: 268e6,
     109: 269e6,
 }
+
+
+
+def num_reduce(n):
+    try:
+        v = math.log(n,10)
+    except:
+        return n
+    if v >= 9:
+        p = 'G'
+        v = 7
+    elif v >= 6:
+        p = 'M'
+        v = 4
+    elif v >= 3:
+        p = 'K'
+        v = 1
+    else:
+        return n
+
+    rv = n // (10 ** v)
+    return '{} {}'.format(rv / 100, p)
+
 
 class Asker(tk.Toplevel):
     def __init__(self, master, *args, cls, **kwargs):
@@ -318,15 +341,17 @@ class CInfo(tk.Frame):
             self.values[f].config(text=tx)
             
 class Info(tk.Frame):
-    def __init__(self, master, name='', fmt=None, centered=False, **kwargs):
+    def __init__(self, master, name='', fmt=None, centered=False,
+                 transf= lambda x:x, **kwargs):
         super().__init__(master, relief=tk.RAISED, border=1)
         self.name = name
         self.fmt = fmt
+        self.transf = transf
         self.what = tk.Label(self, text=self.name)
         self.value = tk.Label(self, text=self.fmt)
         self.what.grid(row=0, column=0, sticky=tk.W)
         for f in kwargs:
-            setattr(self, f, kwargs[f])
+            setattr(self, f, transf(kwargs[f]))
         if not centered:
             self.value.grid(row=0, column=1, sticky=tk.E)
         else:
@@ -335,7 +360,7 @@ class Info(tk.Frame):
         self.columnconfigure(1,weight=1)
         self.refresh()
     def set(self, **kwargs):
-        self.__dict__.update(kwargs)
+        self.__dict__.update({x: self.transf(v) for x,v in kwargs.items()})
         self.refresh()
     def refresh(self, **kwargs):
         v = vars(self)
@@ -357,13 +382,14 @@ class Hud(tk.Frame):
                                fields=(('black', '{black}/10'),
                                        'blue', 'purple', 'yellow'))
         self.exp = Info(self, name='X', fmt='{current_xp}/{next_level}',
-                        current_xp='?', next_level='??')
+                        current_xp='?', next_level='??', transf=num_reduce)
         self.title.grid(sticky=tk.E+tk.W)
         self.exo.grid(sticky=tk.E+tk.W)
         self.d_content.grid(sticky=tk.E+tk.W)
         self.exp.grid(sticky=tk.E+tk.W)
         self.columnconfigure(0,weight=1)
         self.last_upd = time.time()
+        self.master = master
     def tick(self):
         self.last_upd = time.time()
     def refresh(self):
@@ -373,8 +399,9 @@ class Hud(tk.Frame):
         self.exp.refresh()
 
 class MainHud(tk.Frame):
-    def __init__(self, master):
+    def __init__(self, root, master):
         super().__init__(master)
+        self.root = root
         self.started = CountDown(self, name='Started', up=True)
         self.dailies = CountDown(self, name='D', when=None, next=1800)
         self.mine = MineW(self)
@@ -402,8 +429,7 @@ class MainHud(tk.Frame):
         self.bossS.refresh()
         self.bossG.refresh()
     def bye(self):
-        CommitDb()
-        sys.exit(0)
+        self.root.destroy()
 
 class Gui():
     huds = dict()
@@ -412,7 +438,7 @@ class Gui():
         self.queue = queue
         self.main_frame = tk.Frame(master)
         self.main_frame.grid()
-        self.general = MainHud(self.main_frame)
+        self.general = MainHud(self.master, self.main_frame)
         self.general.grid()
         for i in range(len(nb)):
             h = Hud(self.main_frame, i)
@@ -469,8 +495,7 @@ class Gui():
 
 
     def xp(self, d, hud):
-        for i in d:
-            setattr(hud.exp, i, d[i])
+        hud.exp.set(**d)
         hud.exp.refresh()
         hud.tick()
 

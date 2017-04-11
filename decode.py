@@ -9,23 +9,6 @@ players = {}
 equip_level = ('bronze', 'iron', 'silver', 'gold', 'aurian',
                'rubian', 'mithrillan', 'argentian', 'ferrian')
                
-def num_reduce(n):
-  v = math.log(n,10)
-  if v >= 9:
-    p = 'G'
-    v = 7
-  elif v >= 6:
-    p = 'M'
-    v = 4
-  elif v >= 3:
-    p = 'K'
-    v = 1
-  else:
-    return n
-
-  rv = n // (10 ** v)
-  return '{} {}'.format(rv / 100, p)
-
 def handler(*tags):
   global handled
   def wrap(f):
@@ -51,26 +34,9 @@ ignore('08_0B', '08_0C', '19_09', '1C_04', '02_08')
 #        '3E_06',
 # )
 
-def num_reduce(n):
-  v = math.log(n,10)
-  if v >= 9:
-    p = 'G'
-    v = 7
-  elif v >= 6:
-    p = 'M'
-    v = 4
-  elif v >= 3:
-    p = 'K'
-    v = 1
-  else:
-    return n
-
-  rv = n // (10 ** v)
-  return '{} {}'.format(rv / 100, p)
-
 @handler('02_08')
 def decode(d, what_cmd):
-  return {'xp': {'current_xp': num_reduce(d['zhujue_exp'])}}
+  return {'xp': {'current_xp': d['zhujue_exp']}}
 
 
 # Player stuff
