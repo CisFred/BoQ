@@ -27,6 +27,7 @@ class GenView(tk.Toplevel):
         print('DbView', name)
         self.name = name
         tk.Label(self, text=name).grid(columnspan=2, sticky=tk.EW)
+        self.protocol('WM_DELETE_WINDOW', lambda h=hud,n=name: self.unreg(h,n))
         c = 1
         try:
             for k in js.keys():
@@ -69,6 +70,22 @@ class GenView(tk.Toplevel):
             except:
                 traceback.print_exc()
                 print('js', js)
+
+    def unreg(self, h, n):
+        h.tmp.pop(n)
+        self.destroy()
+
+
+    def sort(self, col, d):
+        l = [(self.tree.set(k,col), k) for k in self.tree.get_children('')]
+        try:
+            l.sort(key=self.s_val, reverse=d)
+        except:
+            l.sort(key=lambda x: x[0], reverse=d)
+        for i, (v, k) in enumerate(l):
+            self.tree.move(k, '', i)
+        self.tree.heading(col, text=col,
+                          command=lambda f=col: self.sort(f, not d))
 
     def show(self, v, f):
         GenView(self.master, self.hud, self.name + ' ' + f, v)

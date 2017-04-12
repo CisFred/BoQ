@@ -71,13 +71,14 @@ def num_reduce(n):
 
 
 class Asker(tk.Toplevel):
-    def __init__(self, master, *args, cls, **kwargs):
+    def __init__(self, master, cls, **kwargs):
         super().__init__(master)
         self.title = tk.Label(self, text="What is")
         self.cls = cls
         self.vals = dict()
-        for i in range(len(args)):
-            f = args[i]
+        flds = cls._fnames
+        for i in range(len(flds)):
+            f = flds[i]
             w1 = tk.Label(self, text=f)
             self.vals[f] = tk.StringVar()
             if f not in kwargs:
@@ -350,6 +351,7 @@ class Info(tk.Frame):
         self.what = tk.Label(self, text=self.name)
         self.value = tk.Label(self, text=self.fmt)
         self.what.grid(row=0, column=0, sticky=tk.W)
+        self.vals = list(kwargs.keys())
         for f in kwargs:
             setattr(self, f, transf(kwargs[f]))
         if not centered:
@@ -360,12 +362,11 @@ class Info(tk.Frame):
         self.columnconfigure(1,weight=1)
         self.refresh()
     def set(self, **kwargs):
-        self.__dict__.update({x: self.transf(v) for x,v in kwargs.items()})
+        self.__dict__.update(**kwargs)
         self.refresh()
-    def refresh(self, **kwargs):
-        v = vars(self)
-        v.update(kwargs)
+    def refresh(self):
         try:
+            v = {x: self.transf(getattr(self,x,'?!?')) for x in self.vals}
             tx = self.fmt.format(**v)
         except:
             tx = sys.exc_info()[1]
@@ -483,7 +484,6 @@ class Gui():
                 h.tick()
                 # print('got', xx, 'from', who)
                 for k in xx:
-                    print('Proc', k, 'for', who)
                     if hasattr(self, k):
                         getattr(self, k)(xx[k], h)
         
@@ -512,7 +512,8 @@ class Gui():
         self.general.mine.set_cd(d)
 
     def mine(self, d, hud):
-        GenView(self.master, hud, name='Mine ' + d['what_cmd'], js=d)
+        name = 'Mine ' + d.pop('what_cmd')
+        GenView(self.master, hud, name=name, js=d)
 
     def player(self, d, hud):
         p = Player(**d)
@@ -534,12 +535,11 @@ class Gui():
                 c = n % 6
                 n += 1
                 obj = Stuff.get(id=x['id'])
-                if not obj.name:
+                if obj and len(obj) and not obj[0].name:
                     if max:
                         if 'price' in x and 'num' in x:
                             x['price'] //= x['num']
-                        Asker(self.master, obj._fnames, cls=Stuff, **x,
-                              row=r, col=c)
+                        Asker(self.master, cls=Stuff, **x, row=r, col=c)
                         max -= 1
         hud.tick()
 
@@ -555,13 +555,12 @@ class Gui():
         hud.d_content.set(black=d['done'], blue=p[3], purple=p[4], yellow=p[5])
         hud.tick()
 
-    def play_gen(self, d, huf):
+    def play_gen(self, d, hud):
         GenView(self.master, hud, name=d.pop('what_cmd'), js=d)
 
     def manor(self, d, hud):
-        me = getattr(self, 'whoami', None)
-
-        GenView(self.master, hud, name='Manor ' + d['what_cmd'], js=d)
+        cm = d.pop('what_cmd')
+        GenView(self.master, hud, name='Manor ' + cm, js=d)
 
         fields = ('cd', 'left_times', 'plant_level', 'seed_level', 'lev')
         p_list = [{k: x[k] for k in fields} for x in d['lands']]
@@ -569,14 +568,16 @@ class Gui():
 
         
         if 'self' in d and d['self']:
-            me = Player.get(player_id = d['player_id'])[0]
+            pls = Player.get(player_id = d['player_id'])
+            me = pls[0]
+            print('I am ', me.name, 'id', d['player_id'], 'self', d['self'])
             self.I_am(me, hud)
             friends = [x['name'] for x in d['friends']]
         else:
             friends = []
 
 
-        # return
+        return
         p = Player(player_id = d['player_id'])
         manors[p.name] = (p.level, p.name, p_list, f_list)
         print(me, 'added manor for', p.name)
@@ -589,13 +590,17 @@ class Gui():
 
         
     def I_am(self, p, hud=None):
-        self.whoami = p.name
-        hud.title.tag = self.whoami
+        if hud.title.tag != p.name:
+            print('Hud', hud.title.tag, '-->', p.name)
+            hud.title.tag = p.name
         hud.exp.next_level = levels[p.level] if p.level in levels else '--> {}'.format(p.level)
         hud.title.refresh()
         hud.tick()
 
     def associate(self, d, hud):
+        # d.pop('what_cmd')
+        if 'player_name' in d:
+            d['name'] = d.pop('player_name')
         try:
             p = Player(**d).save()
         except:
