@@ -9,16 +9,12 @@ root = None
 
 class GenView(tk.Toplevel):
     def __new__(cls, master, hud, name, js):
-        if name in hud.tmp:
-            print('Old GV', name, super())
-        else:
-            print('New GV', name, super(GenView, cls))
+        if name not in hud.tmp:
             hud.tmp[name] = super().__new__(cls)
         return hud.tmp[name]
 
     def __init__(self, master, hud, name, js):
         if hasattr(self, 'hud'):
-            print('Already there', self.name)
             return
         super().__init__(master, name=name.lower())
         self.grid()
@@ -51,11 +47,11 @@ class GenView(tk.Toplevel):
                 cln = [x for x in js[0].keys()]
                 self.tree = ttk.Treeview(self, columns=cln,
                                          displaycolumns='#all')
-                self.tree.column('#0', stretch=0, width=2)
+                self.tree.column('#0', width=2)
                 for f in cln:
                     self.tree.heading(f, text=f,
                                       command=lambda f=f: self.sort(f, False))
-                    self.tree.column(f, width=70)
+                    # self.tree.column(f, width=70)
 
                 sb = ttk.Scrollbar(self, orient=tk.VERTICAL,
                                    command= self.tree.yview)
@@ -75,6 +71,11 @@ class GenView(tk.Toplevel):
         h.tmp.pop(n)
         self.destroy()
 
+    def s_val(self, v):
+        try:
+            return int(v[0])
+        except:
+            return v[0]
 
     def sort(self, col, d):
         l = [(self.tree.set(k,col), k) for k in self.tree.get_children('')]
@@ -105,12 +106,12 @@ class DbView(ttk.Frame):
         self.tree = ttk.Treeview(self, columns=self.fields,
                                 displaycolumns='#all')
 
-        self.tree.column('#0', stretch=0, width=2)
+        self.tree.column('#0', width=2)
         for f in self.fields:
             self.tree.heading(f,
                               text=f,
                               command=lambda f=f: self.sort(f, False))
-            self.tree.column(f, width=70)
+            # self.tree.column(f, width=70)
             
         sb = ttk.Scrollbar(self, orient=tk.VERTICAL, command= self.tree.yview)
         self.tree['yscroll'] = sb
