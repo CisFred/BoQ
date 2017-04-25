@@ -8,3 +8,4 @@ amfy_fail
 .#*
 *.log
 *.db
+errlog
