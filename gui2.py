@@ -3,7 +3,7 @@ import tkinter as tk
 from datetime import timedelta, datetime
 
 class Asker(tk.Toplevel):
-    def __init__(self, master, cls, **kwargs):
+    def __init__(self, master, cls, ask=None, **kwargs):
         super().__init__(master)
         self.title = tk.Label(self, text="What is")
         self.cls = cls
@@ -33,6 +33,7 @@ class Asker(tk.Toplevel):
         ac = tk.Button(self, text='Save', command=self.saveme)
         qt.grid(row=i+i2+3, column=0, sticky=tk.W)
         ac.grid(row=i+i2+3, column=1, sticky=tk.E)
+        self.protocol('WM_DELETE_WINDOW', lambda a=ask,i=id: a.unask(i))
     def saveme(self):
         v = {x: self.vals[x].get() for x in self.vals}
         print("Saveme", v)
@@ -210,6 +211,10 @@ class Removable(tk.Frame):
             self.widget = tk.Button(self, text=action[0], command=action[1])
         else:
             self.widget = tk.Label(self, text='?? {} ??'.format(kwargs))
+        if 'auto' in kwargs and kwargs['auto']:
+            self.auto = time.time() + kwargs['auto']
+        else:
+            self.auto = None
         b = tk.Button(self, text='X', command=self.bye)
         self.widget.grid(column=0, row=0, sticky=tk.EW)
         b.grid(column=1, row=0, sticky=tk.E)
@@ -218,27 +223,32 @@ class Removable(tk.Frame):
     def bye(self):
         if self.tag:
             print('removing', self.tag)
-            self.up.notes[self.tag] = None
+            del(self.up.notes[self.tag])
         self.destroy()
     def update(self, text=None, action=None):
         self.widget.configure(text=text if text else action[0])
+    def refresh(self):
+        if self.auto and self.auto < time.time():
+            self.bye()
 
 class Note(tk.Frame):
     def __init__(self, master, **kwargs):
         super().__init__(master, relief=tk.RAISED, border=1)
         self.notes = dict()
-
         
-    def add(self, tag=None, text=None, action=None):
+    def add(self, tag=None, text=None, remove=None, action=None):
         if tag and tag in self.notes:
             if self.notes[tag]:
                 self.notes[tag].update(text=text, action=action)
             return
-        self.notes[tag] = Removable(self, tag=tag, text=text)
+        self.notes[tag] = Removable(self, tag=tag, text=text, auto=remove)
         self.notes[tag].grid(sticky=tk.EW)
         self.notes[tag].columnconfigure(0,weight=1)
     def delete(self, tag=None, text=None, action=None):
         if tag and tag in self.notes:
             self.notes[tag].destroy()
-            self.notes[tag] = None
+            del(self.notes[tag])
         
+    def refresh(self):
+        for i in self.notes:
+            self.notes[i].refresh()

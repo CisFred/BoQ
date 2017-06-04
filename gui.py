@@ -1,5 +1,6 @@
 import os, sys, time, queue, math
 import tkinter as tk
+from tkinter import ttk
 from datetime import timedelta, datetime
 from multiprocessing import Process, Queue
 import getopt, traceback
@@ -58,6 +59,42 @@ levels = {
     117: 282e6,
     118: 283e6,
     119: 284e6,
+    120: 285e6,
+    121: 291e6,
+    122: 292e6,
+    123: 293e6,
+    124: 294e6,
+    125: 295e6,
+    126: 296e6,
+    127: 297e6,
+    128: 298e6,
+    129: 299e6,
+    130: 300e6,
+    131: 306e6,
+    132: 307e6,
+    133: 308e6,
+    134: 309e6,
+    135: 310e6,
+    136: 311e6,
+    137: 312e6,
+    138: 313e6,
+    139: 314e6,
+    140: 315e6,
+    141: 385e6,
+    142: 451e6,
+    143: 517e6,
+    144: 583e6,
+
+
+
+    147: 785e6,
+    148: 853e6,
+    149: 921e6,
+
+    
+    152: 115e7,
+    153: 122e7,
+    
 }
 
 
@@ -85,22 +122,18 @@ def num_reduce(n):
 
 
 
-class ManorGroup(tk.Frame):
-    def __init__(self, master, what, data, col, row):
-        super().__init__(master, relief=tk.RAISED, border=1)
+class ManorGroup():
+    def __init__(self, data):
         self.group(data)
-        self.grp = []
-        self.what = tk.Label(self, text=what[0:2])
-        self.grp = [CountDown(self, next=False,
-                              name=self.groups[g]['nb'],
-                              when=self.groups[g]['min'])
-                    for g in sorted(self.groups)]
-        self.what.grid(row=0, column=0, sticky=tk.W)
-        self.columnconfigure(0,weight=1)
-        for n in range(len(self.grp)):
-            self.grp[n].grid(row=0, column=n+1, sticky=tk.W+tk.E)
-            self.columnconfigure(n+1,weight=1)
-        self.grid(row=row, column=col, sticky=tk.E+tk.W)
+        # self.grp = [CountDown(self, next=False,
+        #                       name=self.groups[g]['nb'],
+        #                       when=self.groups[g]['min'])
+        #             for g in sorted(self.groups)]
+
+        # for n in range(len(self.grp)):
+        #     self.grp[n].grid(row=0, column=n+1, sticky=tk.W+tk.E)
+        #     self.columnconfigure(n+1,weight=1)
+        # self.grid(row=row, column=col, sticky=tk.E+tk.W)
 
     def group(self, lst):
         grp_lst = dict()
@@ -108,7 +141,7 @@ class ManorGroup(tk.Frame):
             if entry['plant_level'] and entry['left_times']:
                 this_cd = entry['cd']
                 for grp_cd, grp_value in grp_lst.items():
-                    if abs(grp_cd - this_cd) < 60:
+                    if abs(grp_cd - this_cd) < 180:
                         grp_value['nb'] += 1
                         if this_cd < grp_value['min']:
                             grp_value['min'] = this_cd
@@ -118,64 +151,93 @@ class ManorGroup(tk.Frame):
                 else:
                     grp_lst[this_cd] = {'min': this_cd, 'max': this_cd, 'nb': 1}
         self.groups = grp_lst
+        self.now = time.time()
+    def show(self):
+        return ' | '.join([
+            "{nb}: {when}".format(**g, when=str(timedelta(seconds=int(g['min']))))
+            for g in self.groups.values()])
+
     def refresh(self):
-        for g in self.grp:
-            g.refresh()
+        delta = time.time() - self.now
+        self.now = time.time()
+        for d in self.groups.values():
+            if d['min'] > delta:
+                d['min'] -= delta
+            else:
+                d['min'] = 0
 
 class ManorLine():
-    def __init__(self, master, data, row):
-        p = Player(name=data[1])
-        self.who = tk.Label(master,
-                            text='{:<30s} {:>3d}'.format(p.name, p.level))
-        print('ManorLine', data)
-        self.who.grid(row=row, column=0, sticky=tk.W)
-        self.flowers = ManorGroup(master, 'Flowers', data[2], col=1, row=row)
-        self.fruits = ManorGroup(master, 'Fruits', data[3], col=2, row=row)
+    def __init__(self, player, level, fl_line, fr_line):
+        self.player = player
+        self.level = level
+        self.flowers = ManorGroup(fl_line)
+        self.fruits = ManorGroup(fr_line)
+    def update(self, level, fl_line, fr_line):
+        self.level = level
+        self.flowers.group(fl_line)
+        self.fruits.group(fr_line)
+    def vals(self):
+        return (self.player, self.level,
+                self.flowers.show(), self.fruits.show())
     def refresh(self):
-        self.flowers.refresh()
-        self.fruits.refresh()
-    def set(self, data):
-        self.who.config(text=data[1])
-        self.flowers.group(data[2])
-        self.fruits.group(data[3])
         self.flowers.refresh()
         self.fruits.refresh()
 
 class Manor(tk.Toplevel):
-    def __init__(self, master, player, friends):
+    def __init__(self, master):
         super().__init__(master, relief=tk.RAISED, border=1)
-        self.title = ManorLine(self, manors[player.name], row=0)
-        self.mlines = dict()
-        self.friends = friends
-        self.set()
-        self.columnconfigure(0,weight=1)
-        self.columnconfigure(1,weight=1)
-        self.columnconfigure(2,weight=1)
-
-        
-    def set(self):
-        by_level = sorted(manors.values(), reverse=True,
-                          key=lambda x: x[0] if x[1] in self.friends else 0)
-
-        print('set', len(by_level), '/', len(manors))
-        for i in range(len(by_level)):
-            if i > 25:
-                break
-            who = by_level[i][1]
+        self.fields = ('Name', 'Lvl', 'Flowers', 'Fruits')
+        self.tree = ttk.Treeview(self, columns=self.fields,
+                                 displaycolumns='#all')
+        self.tree.column('#0', width=2)
+        for f in self.fields:
+            self.tree.heading(f,
+                              text=f,
+                              command=lambda f=f: self.sort(f, False))
             
-            if who in self.mlines:
-                self.mlines[who].set(by_level[i])
-            else:
-                self.mlines[who] = ManorLine(self, by_level[i], row=i+1)
-            # self.mlines[who].grid(row=i+1, column=0, sticky=tk.E+tk.W)
-            print('line for', who, 'at', i+1)
+        self.tree.column('#1', width=200)
+        self.tree.column('#2', width=40)
+
+        sb = ttk.Scrollbar(self, orient=tk.VERTICAL, command= self.tree.yview)
+        self.tree['yscroll'] = sb
+        self.tree.grid(row=0, column=0, sticky=tk.NSEW)
+        sb.grid(row=0, column=1, sticky=tk.NS)
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.manors = dict()
+
+    def set(self, player, level, fl_line, fr_line):
+        if self.tree.exists(player):
+            self.manors[player].update(level, fl_line, fr_line)
+            self.tree.item(player, values=self.manors[player].vals())
+        else:
+            self.manors[player]=ManorLine(player, level, fl_line, fr_line)
+            for i, v in enumerate(self.tree.get_children()):
+                if int(self.tree.set(v, 1)) < level:
+                    self.tree.insert('', i, player,
+                                     values=self.manors[player].vals())
+                    return
+            self.tree.insert('', tk.END, player,
+                             values=self.manors[player].vals())
+
+    def sort(self, col, d):
+        l = [(self.tree.set(k,col), k) for k in self.tree.get_children('')]
+        try:
+            l.sort(key=self.s_val, reverse=d)
+        except:
+            l.sort(key=lambda x: x[0], reverse=d)
+        for i, (v, k) in enumerate(l):
+            self.tree.move(k, '', i)
+        self.tree.heading(col, text=col,
+                          command=lambda f=col: self.sort(f, not d))
+
+
 
     def refresh(self):
-        self.title.refresh()
-        for m in self.mlines.values():
+        for m in self.manors.values():
             if m:
                 m.refresh()
-    
+                self.tree.item(m.player, values=m.vals())
 
 class Hud(tk.Frame):
     def __init__(self, master, tag, who='Unknown'):
@@ -208,6 +270,7 @@ class Hud(tk.Frame):
         self.d_content.refresh()
         self.exp.refresh()
         self.manor.refresh()
+        self.note.refresh()
 
 class MainHud(tk.Frame):
     def __init__(self, root, master):
@@ -231,7 +294,6 @@ class MainHud(tk.Frame):
         self.manor.grid(sticky=tk.E+tk.W)
         self.mine.grid(sticky=tk.E+tk.W)
         self.creeps.grid(sticky=tk.E+tk.W)
-        self.orcs_on = False
         self.columnconfigure(0,weight=1)
         self.show_db.grid(sticky=tk.E+tk.W)
         self.bye.grid(sticky=tk.E+tk.W)
@@ -243,6 +305,7 @@ class MainHud(tk.Frame):
         self.creeps.refresh()
         self.bossS.refresh()
         self.bossG.refresh()
+        self.orcs.refresh()
     def bye(self):
         while self.in_refresh:
             a = [x for x in range(10000)]
@@ -257,13 +320,15 @@ class Gui():
         self.main_frame = tk.Frame(master)
         self.main_frame.grid()
         self.general = MainHud(self.master, self.main_frame)
+        self.orcs_on = False
         self.general.grid()
         for i in range(len(nb)):
             h = Hud(self.main_frame, i)
             h.grid(row=0)
             self.huds[i['tag']] = h
         self.master.after(500, self.refresh)
-        self.Manors = dict()
+        self.Manors = Manor(self.master)
+        self.Asked = dict()
 
     def refresh(self):
         self.general.in_refresh = True
@@ -273,9 +338,7 @@ class Gui():
             for k, h in self.huds.items():
                 if h:
                     h.refresh()
-            for k, m in self.Manors.items():
-                if m:
-                    m.refresh()
+            self.Manors.refresh()
         except:
             traceback.print_exc()
 
@@ -323,8 +386,9 @@ class Gui():
 
     def set_orcs(self, d, hud):
         if not self.orcs_on:
-            self.orcs.grid(sticky=tk.E+tk.W)
+            self.general.orcs.grid(sticky=tk.E+tk.W)
             self.orcs_on = True
+        print('orc cd ', d)
         self.general.orcs.set_cd(d)
 
     def mine(self, d, hud):
@@ -367,43 +431,59 @@ class Gui():
         hud.exo.set_cd(d['left_time'])
         hud.tick()
         unk = 0
+        exo_str = list()
         for (a,b) in [x.split(':') for x in d['mystic_record'].split(',')]:
-            if b != '0':
-                o = Stuff.get(id_short_1=b)
-                if not (o and len(o) and o[0].name):
-                    unk += 1
+            o = Stuff.get(id_short_1=b) if b != '0' else None
+            if not (o and len(o) and o[0].name):
+                unk += 1
+                exo_str.append(b)
+            else:
+                exo_str.append(' ')
         if unk:
-            hud.note.add(tag='Exo_Unk', text='Exo: {} !'.format(unk))
+            hud.note.add(tag='Exo_Unk', text=str(exo_str))
 
     def inventory(self, d, hud):
         n = 0
         max = 2
         if 'backpack' in d:
-            for x in d['backpack']:
-                if not x['id']:
-                    continue
-                r = n // 6
-                c = n % 6
-                n += 1
-                obj = Stuff.get(id=x['id'])
+            loc = 'backpack'
+            loc_ln = 6
+        elif 'warehouse' in d:
+            loc = 'warehouse'
+            loc_ln = 9
+        else:
+            return
+        for x in d[loc]:
+            if not x['id']:
+                continue
+            r = n // loc_ln
+            c = n % loc_ln
+            n += 1
+            obj = Stuff.get(id=x['id'])
 
-                if not obj or (len(obj) and not obj[0].name):
-                    if max:
-                        if 'price' in x and 'num' in x:
-                            x['price'] //= x['num']
-                        Asker(self.master, cls=Stuff, **x, row=r, col=c)
-                        max -= 1
+            if not obj or (len(obj) and not obj[0].name):
+                if x['id'] not in self.Asked:
+                    if 'price' in x and 'num' in x:
+                        x['price'] //= x['num']
+                    locs = '{} of {}'.format(loc, hud.title.tag)
+                    self.Asked[x['id']] = Asker(self.master, cls=Stuff, **x,
+                                                row=r+1, col=c+1,
+                                                location=locs, ask=self)
         hud.tick()
-
+    def unask(self, i):
+        self.Asked[i] = None
 
     def dailies(self, d, hud):
         self.general.dailies.set_cd(d['next_refresh']);
         p = {3: 0, 4: 0, 5: 0}
         for i in d['possible']:
             if i['type'] == 3 and i['quality'] > 3:
-                hud.note.add(tag=str(i), text='Instance %d' % i['quality'])
-            elif i['type'] == 4 and i['required_times'] < 3 and i['quality'] > 3:
-                hud.note.add(tag=str(i), text='Gold({}) {}'.format(i['required_times'], i['quality']))
+                hud.note.add(tag=str(i), remove=d['next_refresh'],
+                             text='Instance %d' % i['quality'])
+            elif i['type'] == 4 and i['required_times'] < 5 and i['quality'] > 3:
+                hud.note.add(tag=str(i), remove=d['next_refresh'],
+                             text='Gold({}) {}'.format(i['required_times'],
+                                                       i['quality']))
 
             if i['quality'] in p:
                 p[i['quality']] += 1
@@ -430,9 +510,8 @@ class Gui():
         
         if 'self' in d and d['self']:
             pls = Player.get(player_id = d['player_id'])
-            me = pls[0]
             # print('I am ', me.name, 'id', d['player_id'], 'self', d['self'])
-            self.I_am(me, hud)
+            self.I_am(pls[0], hud)
             friends = [Player(**x).save() for x in d['friends']]
             
             hud.manor.nb=len([x for x in d['lands'] if x['harm'] > 1])
@@ -442,17 +521,9 @@ class Gui():
         else:
             friends = []
 
-
-        return
         p = Player(player_id = d['player_id'])
-        manors[p.name] = (p.level, p.name, p_list, f_list)
-        print(me, 'added manor for', p.name)
-        if me:
-            if me not in self.Manors:
-                self.Manors[me.name]=Manor(self.master, me, friends)
-            else:
-                self.Manors[me.name].set()
-            self.Manors[me.name].refresh()
+        self.Manors.set(p.name, p.level, p_list, f_list)
+        self.Manors.refresh()
 
         
     def I_am(self, p, hud=None):

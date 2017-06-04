@@ -109,7 +109,11 @@ def assemble(tag, p):
 
 def handle_pck(p, outf=None):
 
-  tag = p['IP'].src + '/' + str(p['TCP'].dport)
+  try:
+    tag = p['IP'].src + '/' + str(p['TCP'].dport)
+  except:
+    traceback.print_exc()
+    return
 
   if hasattr(p, 'load'):
     print(tag, ':', p.load, file=outf)

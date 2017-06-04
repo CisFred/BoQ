@@ -71,6 +71,6 @@ def decode(d, w):
     res = {'next_refresh': d['next_refresh_left_time'],
            'done': d['award_times'], 'possible': list()}
     for quest in d['pending']:
-      # if quest['quality'] > 1 and not quest['finished']:
+      if quest['quality'] > 1 and not quest['finished']:
             res['possible'].append(quest)
     return {'dailies': res}

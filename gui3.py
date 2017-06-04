@@ -24,7 +24,7 @@ class Minemap(tk.Frame):
         y = n['y'] // 5
         return self.map.create_rectangle(x-4, y-4, x+4, y+4, fill=cl[n['type']])
     def remove_node(self, n):
-        if self.nodes[n]:
+        if n in self.nodes and self.nodes[n]:
             self.map.delete(self.nodes[n])
         self.nodes[n] = None
 
