@@ -84,9 +84,8 @@ levels = {
     142: 451e6,
     143: 517e6,
     144: 583e6,
-
-
-
+    145: 650e6,
+    146: 717e6,
     147: 785e6,
     148: 853e6,
     149: 921e6,
@@ -125,16 +124,8 @@ def num_reduce(n):
 class ManorGroup():
     def __init__(self, data):
         self.group(data)
-        # self.grp = [CountDown(self, next=False,
-        #                       name=self.groups[g]['nb'],
-        #                       when=self.groups[g]['min'])
-        #             for g in sorted(self.groups)]
-
-        # for n in range(len(self.grp)):
-        #     self.grp[n].grid(row=0, column=n+1, sticky=tk.W+tk.E)
-        #     self.columnconfigure(n+1,weight=1)
-        # self.grid(row=row, column=col, sticky=tk.E+tk.W)
-
+        self.tag = 'white'
+        
     def group(self, lst):
         grp_lst = dict()
         for entry in lst:
@@ -160,10 +151,12 @@ class ManorGroup():
     def refresh(self):
         delta = time.time() - self.now
         self.now = time.time()
+        self.tag = 'white'
         for d in self.groups.values():
             if d['min'] > delta:
                 d['min'] -= delta
             else:
+                self.tag = 'green'
                 d['min'] = 0
 
 class ManorLine():
@@ -172,16 +165,21 @@ class ManorLine():
         self.level = level
         self.flowers = ManorGroup(fl_line)
         self.fruits = ManorGroup(fr_line)
+        self.tag = self.fruits.tag
     def update(self, level, fl_line, fr_line):
         self.level = level
         self.flowers.group(fl_line)
         self.fruits.group(fr_line)
+        self.tag = self.fruits.tag
     def vals(self):
         return (self.player, self.level,
                 self.flowers.show(), self.fruits.show())
     def refresh(self):
         self.flowers.refresh()
         self.fruits.refresh()
+        self.tag = self.fruits.tag
+    def tags(self):
+        return list(self.tag)
 
 class Manor(tk.Toplevel):
     def __init__(self, master):
@@ -195,8 +193,8 @@ class Manor(tk.Toplevel):
                               text=f,
                               command=lambda f=f: self.sort(f, False))
             
-        self.tree.column('#1', width=200)
-        self.tree.column('#2', width=40)
+        self.tree.column('#1', width=100)
+        self.tree.column('#2', width=20)
 
         sb = ttk.Scrollbar(self, orient=tk.VERTICAL, command= self.tree.yview)
         self.tree['yscroll'] = sb
@@ -204,21 +202,28 @@ class Manor(tk.Toplevel):
         sb.grid(row=0, column=1, sticky=tk.NS)
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
+        self.green = self.tree.tag_configure('green', background='green')
+        self.red = self.tree.tag_configure('red', background='red')
+        self.white = self.tree.tag_configure('white', background='white')
         self.manors = dict()
 
     def set(self, player, level, fl_line, fr_line):
         if self.tree.exists(player):
             self.manors[player].update(level, fl_line, fr_line)
-            self.tree.item(player, values=self.manors[player].vals())
+            self.tree.item(player,
+                           values=self.manors[player].vals(),
+                           tags=self.manors[player].tags())
         else:
             self.manors[player]=ManorLine(player, level, fl_line, fr_line)
             for i, v in enumerate(self.tree.get_children()):
                 if int(self.tree.set(v, 1)) < level:
                     self.tree.insert('', i, player,
-                                     values=self.manors[player].vals())
+                                     values=self.manors[player].vals(),
+                                     tags=self.manors[player].tags())
                     return
             self.tree.insert('', tk.END, player,
-                             values=self.manors[player].vals())
+                             values=self.manors[player].vals(),
+                             tags=self.manors[player].tags())
 
     def sort(self, col, d):
         l = [(self.tree.set(k,col), k) for k in self.tree.get_children('')]
